@@ -1,7 +1,17 @@
+import * as dotenv from 'dotenv';
+import path from 'path';
+
+// 1. Tenta carregar o .env do diretório de execução atual
+dotenv.config();
+
+// 2. Se o processo foi iniciado na raiz do monorepo, busca na subpasta 'backend'
+if (!process.env.DATABASE_URL) {
+  dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env') });
+}
+
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import * as dotenv from 'dotenv';
 
 // Importando rotas
 import authRoutes from './routes/authRoutes';
@@ -9,8 +19,6 @@ import productRoutes from './routes/productRoutes';
 import orderRoutes from './routes/orderRoutes';
 import checkoutRoutes from './routes/checkoutRoutes';
 import adminRoutes from './routes/adminRoutes';
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
