@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Mail, Phone, MapPin, Calendar, DollarSign, Edit, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Calendar } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
+import { AdminLayout } from '../components/AdminLayout';
 
 interface OrderItem {
   id: number;
@@ -82,7 +83,7 @@ export const AdminOrders: React.FC = () => {
   };
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
+    <AdminLayout>
       <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         
         {/* Header */}
@@ -239,6 +240,6 @@ export const AdminOrders: React.FC = () => {
         )}
 
       </div>
-    </div>
+    </AdminLayout>
   );
 };

@@ -8,6 +8,9 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).unique().notNull(),
   passwordHash: text('password_hash').notNull(),
   role: varchar('role', { length: 50 }).default('client').notNull(), // 'admin' ou 'client'
+  phone: varchar('phone', { length: 50 }),
+  address: text('address'),
+  profileImage: text('profile_image'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -67,6 +70,25 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   }),
   items: many(orderItems),
 }));
+
+// Tabela de Promoções
+export const promotions = pgTable('promotions', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  type: varchar('type', { length: 50 }).notNull(), // 'percentage', 'fixed_amount', 'buy_x_get_y'
+  value: doublePrecision('value').notNull(), // Valor do desconto (ex: 10 para 10% ou 10.00 para R$10)
+  minPurchaseAmount: doublePrecision('min_purchase_amount').default(0), // Valor mínimo de compra
+  maxDiscountAmount: doublePrecision('max_discount_amount'), // Valor máximo de desconto
+  startDate: timestamp('start_date').notNull(),
+  endDate: timestamp('end_date').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  usageLimit: integer('usage_limit'), // Limite de usos (null = ilimitado)
+  currentUsage: integer('current_usage').default(0).notNull(),
+  applicableCategories: text('applicable_categories'), // JSON array de categorias aplicáveis
+  applicableProducts: text('applicable_products'), // JSON array de IDs de produtos aplicáveis
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   order: one(orders, {

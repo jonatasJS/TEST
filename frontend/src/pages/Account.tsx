@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useSearch, useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   CheckCircle2,
@@ -10,9 +10,13 @@ import {
   Phone,
   MapPin,
   Package,
+  Edit2,
+  Save,
+  X,
 } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
+import { ClientLayout } from '../components/ClientLayout';
 
 interface OrderItem {
   id: number;
@@ -42,6 +46,17 @@ export const Account: React.FC = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const searchParams = useSearch({ from: '/account' }) as Record<string, string>;
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    profileImage: '',
+    currentPassword: '',
+    newPassword: '',
+  });
 
   // Buscar pedidos do usuário logado via TanStack Query
   const { data, isLoading } = useQuery({
@@ -51,6 +66,72 @@ export const Account: React.FC = () => {
   });
 
   const ordersList = data?.orders || [];
+
+  // Mutation para atualizar perfil
+  const updateProfileMutation = useMutation({
+    mutationFn: (profileData: any) => 
+      apiFetch('/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(profileData),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['auth-user'] });
+      setIsEditing(false);
+      setEditForm({
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        profileImage: '',
+        currentPassword: '',
+        newPassword: '',
+      });
+      alert('Perfil atualizado com sucesso!');
+    },
+    onError: (error: any) => {
+      alert(error.message || 'Erro ao atualizar perfil');
+    },
+  });
+
+  const handleEditClick = () => {
+    setEditForm({
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      address: user?.address || '',
+      profileImage: user?.profileImage || '',
+      currentPassword: '',
+      newPassword: '',
+    });
+    setIsEditing(true);
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const profileData: any = {
+      name: editForm.name,
+      phone: editForm.phone,
+      address: editForm.address,
+      profileImage: editForm.profileImage,
+    };
+
+    // Só incluir email se for diferente
+    if (editForm.email !== user?.email) {
+      profileData.email = editForm.email;
+    }
+
+    // Só incluir senha se for fornecida
+    if (editForm.newPassword) {
+      profileData.currentPassword = editForm.currentPassword;
+      profileData.newPassword = editForm.newPassword;
+    } else if (editForm.email !== user?.email) {
+      // Se mudou email mas não senha, precisa da senha atual
+      profileData.currentPassword = editForm.currentPassword;
+    }
+
+    updateProfileMutation.mutate(profileData);
+  };
 
   // Redirecionar se deslogado após terminar o carregamento do auth
   React.useEffect(() => {
@@ -103,7 +184,8 @@ export const Account: React.FC = () => {
   };
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
+    <ClientLayout>
+      <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
       <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
 
         {/* Banner: Pagamento Confirmado */}
@@ -215,82 +297,238 @@ export const Account: React.FC = () => {
         >
           {/* Dados Cadastrais */}
           <div className="glass" style={{ padding: '2rem', border: '1px solid var(--border)' }}>
-            <h3
-              style={{
-                fontFamily: 'var(--font-title)',
-                fontSize: '1.25rem',
-                marginBottom: '1.5rem',
-                borderBottom: '1px solid var(--border)',
-                paddingBottom: '0.8rem',
-              }}
-            >
-              Dados do Perfil
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', fontSize: '0.9rem' }}>
-              <div>
-                <span
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.8rem' }}>
+              <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '1.25rem' }}>
+                Dados do Perfil
+              </h3>
+              {!isEditing ? (
+                <button
+                  onClick={handleEditClick}
                   style={{
-                    color: 'var(--text-dark)',
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    textTransform: 'uppercase',
+                    background: 'var(--primary)',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
                     fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
                   }}
                 >
-                  Nome Completo
-                </span>
-                <span style={{ fontWeight: 600, color: '#fff' }}>{user?.name}</span>
-              </div>
-
-              <div>
-                <span
+                  <Edit2 size={14} />
+                  Editar
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsEditing(false)}
                   style={{
-                    color: 'var(--text-dark)',
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    textTransform: 'uppercase',
+                    background: 'var(--error)',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
                     fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
                   }}
                 >
-                  Endereço de E-mail
-                </span>
-                <span style={{ color: 'var(--text-muted)' }}>{user?.email}</span>
-              </div>
-
-              <div>
-                <span
-                  style={{
-                    color: 'var(--text-dark)',
-                    display: 'block',
-                    fontSize: '0.75rem',
-                    textTransform: 'uppercase',
-                    fontWeight: 600,
-                  }}
-                >
-                  Nível de Acesso
-                </span>
-                <span className="badge badge-paid" style={{ display: 'inline-block', marginTop: '0.2rem' }}>
-                  {user?.role === 'admin' ? 'Administrador' : 'Cliente VIP'}
-                </span>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  alignItems: 'center',
-                  color: 'var(--primary)',
-                  borderTop: '1px solid var(--border)',
-                  paddingTop: '1.2rem',
-                  marginTop: '0.5rem',
-                  fontSize: '0.8rem',
-                }}
-              >
-                <ShieldCheck size={16} />
-                <span>Conta protegida com JWT e Cookies HttpOnly</span>
-              </div>
+                  <X size={14} />
+                  Cancelar
+                </button>
+              )}
             </div>
+
+            {isEditing ? (
+              <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.9rem' }}>
+                <div>
+                  <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                    Nome Completo
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="input-field"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                    Endereço de E-mail
+                  </label>
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    className="input-field"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                    Telefone
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    className="input-field"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                    Endereço
+                  </label>
+                  <textarea
+                    value={editForm.address}
+                    onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                    className="input-field"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff', minHeight: '80px', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                    URL da Imagem do Perfil
+                  </label>
+                  <input
+                    type="url"
+                    value={editForm.profileImage}
+                    onChange={(e) => setEditForm({ ...editForm, profileImage: e.target.value })}
+                    className="input-field"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                  />
+                </div>
+
+                {(editForm.email !== user?.email) && (
+                  <div>
+                    <label style={{ color: 'var(--error)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                      Senha Atual (obrigatório para alterar email)
+                    </label>
+                    <input
+                      type="password"
+                      value={editForm.currentPassword}
+                      onChange={(e) => setEditForm({ ...editForm, currentPassword: e.target.value })}
+                      className="input-field"
+                      style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                      required
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                    Nova Senha (opcional)
+                  </label>
+                  <input
+                    type="password"
+                    value={editForm.newPassword}
+                    onChange={(e) => setEditForm({ ...editForm, newPassword: e.target.value })}
+                    className="input-field"
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                    placeholder="Deixe em branco para manter a senha atual"
+                  />
+                </div>
+
+                {editForm.newPassword && (
+                  <div>
+                    <label style={{ color: 'var(--error)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                      Senha Atual (obrigatório para alterar senha)
+                    </label>
+                    <input
+                      type="password"
+                      value={editForm.currentPassword}
+                      onChange={(e) => setEditForm({ ...editForm, currentPassword: e.target.value })}
+                      className="input-field"
+                      style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                      required
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={updateProfileMutation.isPending}
+                  style={{
+                    background: 'var(--primary)',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '0.6rem 1.2rem',
+                    borderRadius: '6px',
+                    cursor: updateProfileMutation.isPending ? 'not-allowed' : 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    opacity: updateProfileMutation.isPending ? 0.6 : 1,
+                  }}
+                >
+                  <Save size={16} />
+                  {updateProfileMutation.isPending ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </form>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', fontSize: '0.9rem' }}>
+                <div>
+                  <span style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Nome Completo
+                  </span>
+                  <span style={{ fontWeight: 600, color: '#fff' }}>{user?.name}</span>
+                </div>
+
+                <div>
+                  <span style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Endereço de E-mail
+                  </span>
+                  <span style={{ color: 'var(--text-muted)' }}>{user?.email}</span>
+                </div>
+
+                {user?.phone && (
+                  <div>
+                    <span style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                      Telefone
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>{user.phone}</span>
+                  </div>
+                )}
+
+                {user?.address && (
+                  <div>
+                    <span style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                      Endereço
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>{user.address}</span>
+                  </div>
+                )}
+
+                <div>
+                  <span style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Nível de Acesso
+                  </span>
+                  <span className="badge badge-paid" style={{ display: 'inline-block', marginTop: '0.2rem' }}>
+                    {user?.role === 'admin' ? 'Administrador' : 'Cliente VIP'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', color: 'var(--primary)', borderTop: '1px solid var(--border)', paddingTop: '1.2rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
+                  <ShieldCheck size={16} />
+                  <span>Conta protegida com JWT e Cookies HttpOnly</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Lista de Pedidos */}
@@ -452,6 +690,7 @@ export const Account: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </ClientLayout>
   );
 };
