@@ -7,6 +7,12 @@ const ACCESS_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:5000/api/checkout/webhook';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+console.log('=== Mercado Pago Config ===');
+console.log('ACCESS_TOKEN:', ACCESS_TOKEN ? `${ACCESS_TOKEN.substring(0, 20)}...` : 'NÃO CONFIGURADO');
+console.log('WEBHOOK_URL:', WEBHOOK_URL);
+console.log('FRONTEND_URL:', FRONTEND_URL);
+console.log('=========================');
+
 export const createCheckoutPreference = async (req: Request, res: Response) => {
   const { orderId } = req.body;
 
@@ -45,12 +51,13 @@ export const createCheckoutPreference = async (req: Request, res: Response) => {
     // 3. Montar a requisição de preferência
     const preferenceBody = {
       items: mpItems,
-      back_urls: {
-        success: `${FRONTEND_URL}/account?payment=success&orderId=${order.id}`,
-        failure: `${FRONTEND_URL}/cart?payment=failure`,
-        pending: `${FRONTEND_URL}/account?payment=pending`,
+      payment_methods: {
+        excluded_payment_types: [],
+        excluded_payment_methods: [],
+        default_payment_method_id: null,
+        installments: 12,
+        default_installments: 1,
       },
-      auto_return: 'approved',
       external_reference: String(order.id),
       notification_url: WEBHOOK_URL,
       statement_descriptor: 'CYBERVAPES',
@@ -68,6 +75,8 @@ export const createCheckoutPreference = async (req: Request, res: Response) => {
     }
 
     // 4. Disparar chamada HTTP para a API do Mercado Pago
+    console.log('Enviando requisição para Mercado Pago:', JSON.stringify(preferenceBody, null, 2));
+    
     const mpResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
       headers: {
@@ -77,23 +86,121 @@ export const createCheckoutPreference = async (req: Request, res: Response) => {
       body: JSON.stringify(preferenceBody),
     });
 
+    console.log('Status da resposta Mercado Pago:', mpResponse.status);
+
     if (!mpResponse.ok) {
       const errorData = await mpResponse.json();
       console.error('Erro na resposta do Mercado Pago:', errorData);
-      throw new Error('Falha ao registrar preferência de pagamento.');
+      throw new Error(`Falha ao registrar preferência de pagamento. Status: ${mpResponse.status}, Erro: ${JSON.stringify(errorData)}`);
     }
 
     const mpData = await mpResponse.json() as any;
 
+    // Usar sandbox_init_point para testes (credenciais de teste)
+    const isTestToken = ACCESS_TOKEN.includes('APP_USR');
     return res.status(200).json({
       id: mpData.id,
-      initPoint: mpData.init_point,
+      initPoint: isTestToken ? mpData.sandbox_init_point : mpData.init_point,
       sandboxInitPoint: mpData.sandbox_init_point,
       isMock: false,
+      isTest: isTestToken,
     });
   } catch (error: any) {
     console.error('Erro ao gerar preferência Mercado Pago:', error);
     return res.status(500).json({ message: 'Erro ao conectar ao provedor de pagamentos.', error: error.message });
+  }
+};
+
+export const createPixPayment = async (req: Request, res: Response) => {
+  const { orderId } = req.body;
+
+  if (!orderId) {
+    return res.status(400).json({ message: 'O ID do pedido é obrigatório.' });
+  }
+
+  try {
+    // 1. Buscar pedido
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, parseInt(orderId)),
+      with: {
+        items: {
+          with: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Pedido não encontrado.' });
+    }
+
+    // 2. Criar pagamento PIX
+    const paymentBody = {
+      transaction_amount: order.totalAmount,
+      description: `Pedido #${order.id} - CYBERVAPES`,
+      payment_method_id: 'pix',
+      payer: {
+        email: order.customerEmail,
+        first_name: order.customerName.split(' ')[0],
+        last_name: order.customerName.split(' ').slice(1).join(' ') || '',
+      },
+      external_reference: String(order.id),
+    };
+
+    // Caso o ACCESS_TOKEN não esteja configurado, criar mock
+    if (!ACCESS_TOKEN || ACCESS_TOKEN.includes('mock')) {
+      console.log('--- Modo de Teste: Gerando QR Code PIX Simulado ---');
+      return res.status(200).json({
+        id: `mock-pix-${order.id}`,
+        qr_code: '00020126580014BR.GOV.BCB.PIX0136123e4567-e89b-12d3-a456-426614174000520400005303986540550.005802BR5913CYBERVAPES6008BRASIL62070503***6304ABCD',
+        qr_code_base64: null,
+        ticket_url: `${FRONTEND_URL}/account?payment=success&orderId=${order.id}&mock=true`,
+        isMock: true,
+      });
+    }
+
+    // 3. Criar pagamento PIX na API do Mercado Pago
+    console.log('Criando pagamento PIX:', JSON.stringify(paymentBody, null, 2));
+
+    const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(paymentBody),
+    });
+
+    console.log('Status da resposta Mercado Pago PIX:', mpResponse.status);
+
+    if (!mpResponse.ok) {
+      const errorData = await mpResponse.json();
+      console.error('Erro na resposta do Mercado Pago PIX:', errorData);
+      throw new Error(`Falha ao criar pagamento PIX. Status: ${mpResponse.status}, Erro: ${JSON.stringify(errorData)}`);
+    }
+
+    const mpData = await mpResponse.json() as any;
+
+    // 4. Atualizar pedido com o ID do pagamento
+    await db.update(orders)
+      .set({
+        paymentId: String(mpData.id),
+        paymentStatus: 'pending',
+      })
+      .where(eq(orders.id, parseInt(orderId)));
+
+    return res.status(200).json({
+      id: mpData.id,
+      qr_code: mpData.point_of_interaction?.transaction_data?.qr_code,
+      qr_code_base64: mpData.point_of_interaction?.transaction_data?.qr_code_base64,
+      ticket_url: mpData.point_of_interaction?.transaction_data?.ticket_url,
+      status: mpData.status,
+      isMock: false,
+    });
+  } catch (error: any) {
+    console.error('Erro ao criar pagamento PIX:', error);
+    return res.status(500).json({ message: 'Erro ao criar pagamento PIX.', error: error.message });
   }
 };
 

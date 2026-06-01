@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ShoppingBag, ArrowLeft, Trash2, CreditCard, Lock } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, Trash2, CreditCard, Lock, QrCode, X, RefreshCw } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch } from '../config/api';
@@ -15,6 +15,9 @@ export const CartPage: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
+  const [showPixModal, setShowPixModal] = useState(false);
+  const [pixData, setPixData] = useState<any>(null);
 
   // Garantir sincronia caso o usuário logue depois
   React.useEffect(() => {
@@ -55,18 +58,34 @@ export const CartPage: React.FC = () => {
 
       const orderId = orderData.order.id;
 
-      // 2. Gerar a preferência de pagamento no Mercado Pago
-      const paymentPref = await apiFetch<{ initPoint: string; isMock: boolean }>('/checkout/create-preference', {
-        method: 'POST',
-        body: JSON.stringify({ orderId }),
-      });
+      // 2. Criar pagamento baseado no método escolhido
+      if (paymentMethod === 'pix') {
+        const pixPayment = await apiFetch<{ id: string; qr_code: string; qr_code_base64: string; ticket_url: string; isMock: boolean }>('/checkout/create-pix', {
+          method: 'POST',
+          body: JSON.stringify({ orderId }),
+        });
 
-      // Limpar o carrinho localmente
-      clearCart();
+        setPixData(pixPayment);
+        setShowPixModal(true);
+      } else {
+        // Cartão: usar checkout do Mercado Pago
+        const paymentPref = await apiFetch<{ initPoint: string; isMock: boolean }>('/checkout/create-preference', {
+          method: 'POST',
+          body: JSON.stringify({ orderId }),
+        });
 
-      // 3. Redirecionar para o Mercado Pago
-      console.log('Redirecionando para o link de checkout:', paymentPref.initPoint);
-      window.location.href = paymentPref.initPoint;
+        // Limpar o carrinho localmente
+        clearCart();
+
+        // Redirecionar para o Mercado Pago
+        console.log('Redirecionando para o link de checkout:', paymentPref.initPoint);
+        window.location.href = paymentPref.initPoint;
+      }
+
+      // Limpar o carrinho localmente (só para PIX)
+      if (paymentMethod === 'pix') {
+        clearCart();
+      }
 
     } catch (err: any) {
       console.error('Erro ao finalizar pedido:', err);
@@ -75,6 +94,29 @@ export const CartPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const checkPaymentStatus = async (paymentId: string) => {
+    try {
+      const status = await apiFetch(`/checkout/check-payment/${pixData?.id?.replace('mock-pix-', '') || paymentId}`);
+      if (status.status === 'paid') {
+        setShowPixModal(false);
+        window.location.href = '/account?payment=success';
+      }
+    } catch (error) {
+      console.error('Erro ao verificar status:', error);
+    }
+  };
+
+  // Auto-check payment status every 5 seconds
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (showPixModal && pixData && !pixData.isMock) {
+      interval = setInterval(() => {
+        checkPaymentStatus(pixData.id);
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [showPixModal, pixData]);
 
   if (cart.length === 0) {
     return (
@@ -213,14 +255,70 @@ export const CartPage: React.FC = () => {
                   />
                 </div>
 
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Método de Pagamento</label>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('pix')}
+                      style={{
+                        flex: 1,
+                        padding: '1rem',
+                        border: `2px solid ${paymentMethod === 'pix' ? 'var(--primary)' : 'var(--border)'}`,
+                        background: paymentMethod === 'pix' ? 'rgba(168, 85, 247, 0.1)' : '#0a0a0d',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <QrCode size={24} style={{ color: paymentMethod === 'pix' ? 'var(--primary)' : 'var(--text-muted)' }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: paymentMethod === 'pix' ? '#fff' : 'var(--text-muted)' }}>
+                        PIX
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>
+                        Pagamento instantâneo
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('card')}
+                      style={{
+                        flex: 1,
+                        padding: '1rem',
+                        border: `2px solid ${paymentMethod === 'card' ? 'var(--primary)' : 'var(--border)'}`,
+                        background: paymentMethod === 'card' ? 'rgba(168, 85, 247, 0.1)' : '#0a0a0d',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <CreditCard size={24} style={{ color: paymentMethod === 'card' ? 'var(--primary)' : 'var(--text-muted)' }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: paymentMethod === 'card' ? '#fff' : 'var(--text-muted)' }}>
+                        Cartão
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>
+                        Mercado Pago
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   disabled={loading}
                   className="btn btn-primary"
                   style={{ width: '100%', padding: '1rem', marginTop: '1rem', gap: '0.6rem' }}
                 >
-                  <CreditCard size={18} />
-                  {loading ? 'Redirecionando...' : 'Finalizar Pedido e Pagar com Mercado Pago'}
+                  {paymentMethod === 'pix' ? <QrCode size={18} /> : <CreditCard size={18} />}
+                  {loading ? 'Processando...' : paymentMethod === 'pix' ? 'Pagar com PIX' : 'Pagar com Cartão'}
                 </button>
               </form>
             ) : (
@@ -292,6 +390,150 @@ export const CartPage: React.FC = () => {
 
       </div>
       </div>
+
+      {/* Modal PIX */}
+      {showPixModal && pixData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem',
+        }}>
+          <div className="glass" style={{
+            maxWidth: '500px',
+            width: '100%',
+            padding: '2rem',
+            border: '1px solid var(--border)',
+            background: '#0a0a0d',
+            position: 'relative',
+          }}>
+            <button
+              onClick={() => setShowPixModal(false)}
+              style={{
+                position: 'absolute',
+                top: '1rem',
+                right: '1rem',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '0.5rem',
+              }}
+            >
+              <X size={24} />
+            </button>
+
+            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+              <QrCode size={48} style={{ color: 'var(--primary)', marginBottom: '1rem' }} />
+              <h3 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '0.5rem' }}>
+                Pagamento PIX
+              </h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Escaneie o QR Code ou copie o código abaixo
+              </p>
+            </div>
+
+            {pixData.qr_code_base64 ? (
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                <img
+                  src={`data:image/png;base64,${pixData.qr_code_base64}`}
+                  alt="QR Code PIX"
+                  style={{
+                    width: '250px',
+                    height: '250px',
+                    margin: '0 auto',
+                    border: '2px solid var(--border)',
+                    borderRadius: '8px',
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem', padding: '2rem', background: '#0a0a0d', border: '1px dashed var(--border)', borderRadius: '8px' }}>
+                <QrCode size={120} style={{ color: 'var(--text-muted)' }} />
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '1rem' }}>
+                  QR Code não disponível
+                </p>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                Código PIX (copie e cole)
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  value={pixData.qr_code || ''}
+                  readOnly
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem',
+                    background: '#0a0a0d',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.8rem',
+                    fontFamily: 'monospace',
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(pixData.qr_code || '');
+                    alert('Código copiado!');
+                  }}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    background: 'var(--primary)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Copiar
+                </button>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              <RefreshCw size={16} style={{ display: 'inline-block', marginRight: '0.5rem' }} />
+              Verificando pagamento automaticamente...
+            </div>
+
+            {pixData.isMock && (
+              <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                <button
+                  onClick={() => {
+                    setShowPixModal(false);
+                    window.location.href = '/account?payment=success';
+                  }}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'var(--success)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Simular Pagamento Aprovado
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </ClientLayout>
   );
 };
