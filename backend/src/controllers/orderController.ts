@@ -3,9 +3,73 @@ import { eq, desc } from 'drizzle-orm';
 import { db } from '../db/index';
 import { orders, orderItems, products } from '../db/schema';
 import { AuthRequest } from '../middleware/auth';
+import {
+  DELIVERY_STATUSES,
+  PAYMENT_STATUSES,
+  DeliveryStatus,
+  PaymentStatus,
+  formatOrderForClient,
+  normalizeDeliveryStatus,
+  normalizePaymentStatus,
+} from '../utils/orderStatus';
+import { notifyNewOrderForAdmins, notifyOrderDeliveryUpdate } from '../services/notificationService';
+
+async function deductStockForOrder(orderId: number) {
+  const items = await db.query.orderItems.findMany({
+    where: eq(orderItems.orderId, orderId),
+  });
+
+  for (const item of items) {
+    if (!item.productId) continue;
+    const product = await db.query.products.findFirst({
+      where: eq(products.id, item.productId),
+    });
+    if (!product) continue;
+
+    if (product.stock < item.quantity) {
+      throw new Error(`Estoque insuficiente para "${product.name}" ao confirmar entrega.`);
+    }
+
+    await db
+      .update(products)
+      .set({ stock: product.stock - item.quantity })
+      .where(eq(products.id, item.productId));
+  }
+}
+
+async function restoreStockForOrder(orderId: number) {
+  const items = await db.query.orderItems.findMany({
+    where: eq(orderItems.orderId, orderId),
+  });
+
+  for (const item of items) {
+    if (!item.productId) continue;
+    const product = await db.query.products.findFirst({
+      where: eq(products.id, item.productId),
+    });
+    if (!product) continue;
+
+    await db
+      .update(products)
+      .set({ stock: product.stock + item.quantity })
+      .where(eq(products.id, item.productId));
+  }
+}
+
+function mapOrdersForResponse<T extends { status: string; paymentStatus?: string | null }>(list: T[]) {
+  return list.map((o) => formatOrderForClient(o));
+}
 
 export const createOrder = async (req: AuthRequest, res: Response) => {
-  const { items, shippingAddress, contactPhone, customerName, customerEmail } = req.body;
+  const {
+    items,
+    shippingAddress,
+    contactPhone,
+    customerName,
+    customerEmail,
+    paymentType,
+    deliveryPaymentMethod,
+  } = req.body;
   const userId = req.user?.id || null;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -16,8 +80,22 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     return res.status(400).json({ message: 'Dados de entrega e contato incompletos (endereço, telefone, nome, e-mail).' });
   }
 
+  const validPaymentTypes = ['pix', 'on_delivery'];
+  if (!paymentType || !validPaymentTypes.includes(paymentType)) {
+    return res.status(400).json({ message: 'Selecione PIX ou pagamento na entrega.' });
+  }
+
+  if (paymentType === 'on_delivery') {
+    const validCardTypes = ['credit', 'debit'];
+    if (!deliveryPaymentMethod || !validCardTypes.includes(deliveryPaymentMethod)) {
+      return res.status(400).json({ message: 'Selecione cartão de crédito ou débito para pagamento na entrega.' });
+    }
+  }
+
+  const paymentMethod =
+    paymentType === 'pix' ? 'pix' : `on_delivery_${deliveryPaymentMethod}`;
+
   try {
-    // Iniciar transação para garantir atomicidade
     const result = await db.transaction(async (tx) => {
       let totalAmount = 0;
       const verifiedItems = [];
@@ -46,22 +124,22 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           productId: product.id,
           quantity: item.quantity,
           priceAtPurchase: price,
-          newStock: product.stock - item.quantity,
         });
       }
 
-      // 1. Criar o cabeçalho do pedido
       const [newOrder] = await tx.insert(orders).values({
         userId,
-        status: 'pending',
+        status: 'awaiting_courier',
         totalAmount,
         shippingAddress,
         contactPhone,
         customerName,
         customerEmail,
+        paymentStatus: 'pending',
+        paymentMethod,
+        stockDeducted: false,
       }).returning();
 
-      // 2. Criar os itens do pedido e atualizar o estoque
       for (const vItem of verifiedItems) {
         await tx.insert(orderItems).values({
           orderId: newOrder.id,
@@ -69,22 +147,23 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           quantity: vItem.quantity,
           priceAtPurchase: vItem.priceAtPurchase,
         });
-
-        await tx.update(products)
-          .set({ stock: vItem.newStock })
-          .where(eq(products.id, vItem.productId));
       }
 
       return newOrder;
     });
 
+    notifyNewOrderForAdmins(result.id, customerName).catch((err) =>
+      console.error('Falha ao notificar admins:', err),
+    );
+
     return res.status(201).json({
       message: 'Pedido criado com sucesso!',
-      order: result,
+      order: formatOrderForClient(result),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro ao criar pedido:', error);
-    return res.status(400).json({ message: error.message || 'Erro ao processar criação de pedido.' });
+    const message = error instanceof Error ? error.message : 'Erro ao processar criação de pedido.';
+    return res.status(400).json({ message });
   }
 };
 
@@ -106,10 +185,11 @@ export const getUserOrders = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    return res.status(200).json({ orders: userOrders });
-  } catch (error: any) {
+    return res.status(200).json({ orders: mapOrdersForResponse(userOrders) });
+  } catch (error: unknown) {
     console.error('Erro ao buscar pedidos do usuário:', error);
-    return res.status(500).json({ message: 'Erro ao obter histórico de pedidos.', error: error.message });
+    const message = error instanceof Error ? error.message : 'Erro ao obter histórico de pedidos.';
+    return res.status(500).json({ message, error: message });
   }
 };
 
@@ -126,20 +206,33 @@ export const getAllOrders = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    return res.status(200).json({ orders: allOrders });
-  } catch (error: any) {
+    return res.status(200).json({ orders: mapOrdersForResponse(allOrders) });
+  } catch (error: unknown) {
     console.error('Erro ao buscar todos os pedidos:', error);
-    return res.status(500).json({ message: 'Erro ao listar pedidos no painel.', error: error.message });
+    const message = error instanceof Error ? error.message : 'Erro ao listar pedidos no painel.';
+    return res.status(500).json({ message, error: message });
   }
 };
 
 export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { deliveryStatus, paymentStatus } = req.body as {
+    deliveryStatus?: DeliveryStatus;
+    paymentStatus?: PaymentStatus;
+  };
 
-  const validStatuses = ['pending', 'paid', 'shipped', 'cancelled'];
-  if (!status || !validStatuses.includes(status)) {
-    return res.status(400).json({ message: 'Status inválido. Use: pending, paid, shipped ou cancelled.' });
+  if (!deliveryStatus && !paymentStatus) {
+    return res.status(400).json({ message: 'Informe deliveryStatus e/ou paymentStatus.' });
+  }
+
+  if (deliveryStatus && !DELIVERY_STATUSES.includes(deliveryStatus)) {
+    return res.status(400).json({
+      message: 'Status de entrega inválido. Use: awaiting_courier, on_the_way, delivered ou cancelled.',
+    });
+  }
+
+  if (paymentStatus && !PAYMENT_STATUSES.includes(paymentStatus)) {
+    return res.status(400).json({ message: 'Status de pagamento inválido. Use: pending, paid ou cancelled.' });
   }
 
   try {
@@ -151,38 +244,46 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Pedido não encontrado.' });
     }
 
-    // Se o pedido for cancelado, repor estoque dos produtos correspondentes!
-    if (status === 'cancelled' && existing.status !== 'cancelled') {
-      const items = await db.query.orderItems.findMany({
-        where: eq(orderItems.orderId, existing.id),
-      });
+    const previousDelivery = normalizeDeliveryStatus(existing.status);
+    const updates: Partial<typeof orders.$inferInsert> = {};
 
-      for (const item of items) {
-        if (item.productId) {
-          const product = await db.query.products.findFirst({
-            where: eq(products.id, item.productId),
-          });
-          if (product) {
-            await db.update(products)
-              .set({ stock: product.stock + item.quantity })
-              .where(eq(products.id, item.productId));
-          }
-        }
+    if (paymentStatus) {
+      updates.paymentStatus = paymentStatus;
+    }
+
+    if (deliveryStatus) {
+      updates.status = deliveryStatus;
+
+      if (deliveryStatus === 'delivered' && !existing.stockDeducted) {
+        await deductStockForOrder(existing.id);
+        updates.stockDeducted = true;
+      }
+
+      if (deliveryStatus === 'cancelled' && existing.stockDeducted) {
+        await restoreStockForOrder(existing.id);
+        updates.stockDeducted = false;
       }
     }
 
     const [updatedOrder] = await db
       .update(orders)
-      .set({ status })
+      .set(updates)
       .where(eq(orders.id, parseInt(id)))
       .returning();
 
+    if (deliveryStatus && deliveryStatus !== previousDelivery && updatedOrder.userId) {
+      notifyOrderDeliveryUpdate(updatedOrder.userId, updatedOrder.id, deliveryStatus).catch((err) =>
+        console.error('Falha ao notificar cliente:', err),
+      );
+    }
+
     return res.status(200).json({
-      message: 'Status do pedido atualizado com sucesso!',
-      order: updatedOrder,
+      message: 'Pedido atualizado com sucesso!',
+      order: formatOrderForClient(updatedOrder),
     });
-  } catch (error: any) {
-    console.error('Erro ao atualizar status de pedido:', error);
-    return res.status(500).json({ message: 'Erro ao atualizar o pedido.', error: error.message });
+  } catch (error: unknown) {
+    console.error('Erro ao atualizar pedido:', error);
+    const message = error instanceof Error ? error.message : 'Erro ao atualizar o pedido.';
+    return res.status(500).json({ message, error: message });
   }
 };

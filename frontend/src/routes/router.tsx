@@ -10,6 +10,9 @@ import { Account } from '../pages/Account';
 import { AdminDashboard } from '../pages/AdminDashboard';
 import { AdminProducts } from '../pages/AdminProducts';
 import { AdminOrders } from '../pages/AdminOrders';
+import { AdminPromotions } from '../pages/AdminPromotions';
+import { AdminClients } from '../pages/AdminClients';
+import { AdminReports } from '../pages/AdminReports';
 
 // 1. Definição das rotas folha vinculadas à rota raiz
 const indexRoute = createRoute({
@@ -72,6 +75,24 @@ const adminOrdersRoute = createRoute({
   component: AdminOrders,
 });
 
+const adminPromotionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/promotions',
+  component: AdminPromotions,
+});
+
+const adminClientsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/clients',
+  component: AdminClients,
+});
+
+const adminReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/reports',
+  component: AdminReports,
+});
+
 // 2. Acoplar todas as rotas filhas na rota raiz
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -84,6 +105,9 @@ const routeTree = rootRoute.addChildren([
   adminDashboardRoute,
   adminProductsRoute,
   adminOrdersRoute,
+  adminPromotionsRoute,
+  adminClientsRoute,
+  adminReportsRoute,
 ]);
 
 // 3. Criar a instância do Roteador

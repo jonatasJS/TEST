@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useParams, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingBag, ArrowLeft, Plus, Minus, Star, Heart, Flame, Shield } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, Plus, Minus, Star, Flame, Shield } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { useCart, Product } from '../hooks/useCart';
+import { ClientLayout } from '../components/ClientLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const ProductDetails: React.FC = () => {
   const { id } = useParams({ from: '/products/$id' }) as any;
@@ -20,28 +22,32 @@ export const ProductDetails: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-          <p>Carregando especificações técnicas...</p>
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      <ClientLayout>
+        <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <p>Carregando especificações técnicas...</p>
+            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+          </div>
         </div>
-      </div>
+      </ClientLayout>
     );
   }
 
   if (error || !product) {
     return (
-      <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '2rem' }}>
-        <div className="glass" style={{ padding: '3rem 2rem', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.5rem', color: 'var(--error)' }}>Produto Não Encontrado</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>O produto solicitado não existe ou foi removido do catálogo de vendas.</p>
-          <Link to="/products" className="btn btn-primary" style={{ gap: '0.5rem' }}>
-            <ArrowLeft size={16} />
-            Voltar para o Catálogo
-          </Link>
+      <ClientLayout>
+        <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '2rem' }}>
+          <div className="glass" style={{ padding: '3rem 2rem', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center' }}>
+            <h2 style={{ fontSize: '1.5rem', color: 'var(--error)' }}>Produto Não Encontrado</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>O produto solicitado não existe ou foi removido do catálogo de vendas.</p>
+            <Link to="/products" className="btn btn-primary" style={{ gap: '0.5rem' }}>
+              <ArrowLeft size={16} />
+              Voltar para o Catálogo
+            </Link>
+          </div>
         </div>
-      </div>
+      </ClientLayout>
     );
   }
 
@@ -65,8 +71,9 @@ export const ProductDetails: React.FC = () => {
   };
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '4rem 0' }}>
-      <div className="container">
+    <ClientLayout>
+      <div style={{ background: '#050505', minHeight: '100vh', padding: '4rem 0' }}>
+        <div className="container">
         
         {/* Botão Voltar */}
         <Link
@@ -88,7 +95,7 @@ export const ProductDetails: React.FC = () => {
         </Link>
 
         {/* Grade do Produto */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', lgGridTemplateColumns: '1fr 1fr', gap: '4rem', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '4rem', alignItems: 'start' }}>
           
           {/* Lado Esquerdo: Imagem do Produto */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
@@ -168,7 +175,7 @@ export const ProductDetails: React.FC = () => {
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-dark)', textTransform: 'uppercase', fontWeight: 600 }}>Preço Especial</span>
                 <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 15px var(--secondary-glow)' }}>
-                  R$ {product.price.toFixed(2)}
+                  {formatCurrency(product.price)}
                 </h2>
               </div>
 
@@ -273,6 +280,7 @@ export const ProductDetails: React.FC = () => {
         </div>
 
       </div>
-    </div>
+      </div>
+    </ClientLayout>
   );
 };

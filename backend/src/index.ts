@@ -19,6 +19,9 @@ import productRoutes from './routes/productRoutes';
 import orderRoutes from './routes/orderRoutes';
 import checkoutRoutes from './routes/checkoutRoutes';
 import adminRoutes from './routes/adminRoutes';
+import promotionRoutes from './routes/promotionRoutes';
+import clientRoutes from './routes/clientRoutes';
+import notificationRoutes from './routes/notificationRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -54,6 +57,9 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/checkout', checkoutRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/promotions', promotionRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Tratamento de rotas inexistentes (404)
 app.use((req, res) => {

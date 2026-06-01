@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Plus, Minus, Trash2, ArrowRight } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const CartDrawer: React.FC = () => {
   const { cart, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart, cartTotal } = useCart();
@@ -153,7 +154,7 @@ export const CartDrawer: React.FC = () => {
                           </button>
                         </div>
                         <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--secondary)' }}>
-                          R$ {(item.product.price * item.quantity).toFixed(2)}
+                          {formatCurrency(item.product.price * item.quantity)}
                         </span>
                       </div>
                     </div>
@@ -196,7 +197,7 @@ export const CartDrawer: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Subtotal:</span>
                   <span style={{ fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 10px var(--secondary-glow)' }}>
-                    R$ {cartTotal.toFixed(2)}
+                    {formatCurrency(cartTotal)}
                   </span>
                 </div>
                 <button

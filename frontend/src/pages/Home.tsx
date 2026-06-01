@@ -2,9 +2,11 @@ import React from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Zap, Truck, ShieldCheck, Flame, ChevronRight, Sparkles } from 'lucide-react';
+import { Zap, Truck, ShieldCheck, ChevronRight, Sparkles } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { Product } from '../hooks/useCart';
+import { ClientLayout } from '../components/ClientLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -24,7 +26,8 @@ export const Home: React.FC = () => {
   ];
 
   return (
-    <div style={{ background: '#050505', color: '#fff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <ClientLayout>
+      <div style={{ background: '#050505', color: '#fff', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
       {/* SEÇÃO HERO */}
       <section style={{ position: 'relative', overflow: 'hidden', padding: '6rem 0 4rem 0', borderBottom: '1px solid var(--border)' }}>
@@ -32,7 +35,7 @@ export const Home: React.FC = () => {
         <div style={{ position: 'absolute', top: '10%', left: '50%', width: '400px', height: '400px', background: 'var(--primary-glow)', filter: 'blur(150px)', borderRadius: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 0 }} />
         <div style={{ position: 'absolute', bottom: '-10%', right: '10%', width: '300px', height: '300px', background: 'var(--secondary-glow)', filter: 'blur(120px)', borderRadius: '50%', pointerEvents: 'none', zIndex: 0 }} />
 
-        <div className="container" style={{ position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: '1fr', lgGridTemplateColumns: '1.2fr 0.8fr', gap: '3rem', alignItems: 'center' }}>
+        <div className="container" style={{ position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '3rem', alignItems: 'center' }}>
           
           {/* Hero Texto */}
           <motion.div
@@ -276,7 +279,13 @@ export const Home: React.FC = () => {
                   {/* Detalhes */}
                   <div style={{ marginTop: '1rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <div>
-                      <Link to={`/products/$id`} params={{ id: String(product.id) }} style={{ fontWeight: 700, fontSize: '1.05rem', fontFamily: 'var(--font-title)', display: 'block', hover: { color: 'var(--primary)' } }}>
+                      <Link 
+                        to={`/products/$id`} 
+                        params={{ id: String(product.id) }} 
+                        style={{ fontWeight: 700, fontSize: '1.05rem', fontFamily: 'var(--font-title)', display: 'block', color: '#fff', textDecoration: 'none' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--primary)'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#fff'}
+                      >
                         {product.name}
                       </Link>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.2rem' }}>
@@ -288,7 +297,7 @@ export const Home: React.FC = () => {
                       <div>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Preço</span>
                         <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 10px var(--secondary-glow)' }}>
-                          R$ {product.price.toFixed(2)}
+                          {formatCurrency(product.price)}
                         </span>
                       </div>
                       <Link
@@ -308,5 +317,6 @@ export const Home: React.FC = () => {
         </div>
       </section>
     </div>
+    </ClientLayout>
   );
 };

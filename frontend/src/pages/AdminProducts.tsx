@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, ToggleLeft, ToggleRight, Search, X, Box, Check, RefreshCw } from 'lucide-react';
+import { Plus, Edit, ToggleLeft, ToggleRight, Search, X, Check } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { Product } from '../hooks/useCart';
+import { AdminLayout } from '../components/AdminLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const AdminProducts: React.FC = () => {
   const { isAdmin, authLoading } = useAuth() as any;
@@ -151,7 +153,7 @@ export const AdminProducts: React.FC = () => {
   }
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
+    <AdminLayout>
       <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         
         {/* Top Header */}
@@ -212,7 +214,7 @@ export const AdminProducts: React.FC = () => {
                       {prod.stock} un
                     </span>
                   </td>
-                  <td style={{ padding: '0.8rem 0.5rem', fontWeight: 700, color: 'var(--secondary)' }}>R$ {prod.price.toFixed(2)}</td>
+                  <td style={{ padding: '0.8rem 0.5rem', fontWeight: 700, color: 'var(--secondary)' }}>{formatCurrency(prod.price)}</td>
                   <td style={{ padding: '0.8rem 0.5rem' }}>
                     <span className={prod.isActive ? 'badge badge-success' : 'badge badge-danger'}>
                       {prod.isActive ? 'Ativo' : 'Inativo'}
@@ -328,6 +330,6 @@ export const AdminProducts: React.FC = () => {
         )}
 
       </div>
-    </div>
+    </AdminLayout>
   );
 };

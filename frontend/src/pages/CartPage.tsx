@@ -1,9 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ShoppingBag, ArrowLeft, Trash2, CreditCard, ChevronRight, Lock, CheckCircle } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, Trash2, CreditCard, Lock, QrCode, X, RefreshCw, Truck } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch } from '../config/api';
+import { ClientLayout } from '../components/ClientLayout';
+import { formatCurrency } from '../utils/formatCurrency';
+
+type PaymentType = 'pix' | 'on_delivery';
+type DeliveryCardType = 'credit' | 'debit';
+
+type PixPaymentData = {
+  id: string;
+  qr_code: string;
+  qr_code_base64: string | null;
+  ticket_url: string;
+  isMock: boolean;
+};
 
 export const CartPage: React.FC = () => {
   const { cart, cartTotal, updateQuantity, removeFromCart, clearCart } = useCart();
@@ -14,7 +27,12 @@ export const CartPage: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
-  const [successOrderId, setSuccessOrderId] = useState<number | null>(null);
+  const [paymentType, setPaymentType] = useState<PaymentType>('pix');
+  const [deliveryCardType, setDeliveryCardType] = useState<DeliveryCardType>('credit');
+  const [showPixModal, setShowPixModal] = useState(false);
+  const [pixData, setPixData] = useState<PixPaymentData | null>(null);
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  const [pixQrImageUrl, setPixQrImageUrl] = useState<string | null>(null);
 
   // Garantir sincronia caso o usuário logue depois
   React.useEffect(() => {
@@ -23,6 +41,19 @@ export const CartPage: React.FC = () => {
       setEmail(user.email);
     }
   }, [user]);
+
+  const completeOrderSuccess = useCallback(
+    (orderId: number, mode: 'pix' | 'delivery') => {
+      clearCart();
+      setShowPixModal(false);
+      const query =
+        mode === 'delivery'
+          ? `payment=delivery&orderId=${orderId}`
+          : `payment=success&orderId=${orderId}`;
+      window.location.href = `/account?${query}`;
+    },
+    [clearCart],
+  );
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,10 +64,14 @@ export const CartPage: React.FC = () => {
       return;
     }
 
+    if (paymentType === 'on_delivery' && !deliveryCardType) {
+      alert('Selecione se o pagamento na entrega será no crédito ou no débito.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // 1. Criar o pedido no banco de dados
       const orderItemsData = cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -50,50 +85,105 @@ export const CartPage: React.FC = () => {
           contactPhone: phone,
           customerName: name,
           customerEmail: email,
+          paymentType,
+          deliveryPaymentMethod: paymentType === 'on_delivery' ? deliveryCardType : undefined,
         }),
       });
 
       const orderId = orderData.order.id;
+      setCurrentOrderId(orderId);
 
-      // 2. Gerar a preferência de pagamento no Mercado Pago
-      const paymentPref = await apiFetch<{ initPoint: string; isMock: boolean }>('/checkout/create-preference', {
+      if (paymentType === 'on_delivery') {
+        completeOrderSuccess(orderId, 'delivery');
+        return;
+      }
+
+      const pixPayment = await apiFetch<PixPaymentData>('/checkout/create-pix', {
         method: 'POST',
         body: JSON.stringify({ orderId }),
       });
 
-      // Limpar o carrinho localmente
-      clearCart();
-
-      // 3. Redirecionar para o Mercado Pago
-      console.log('Redirecionando para o link de checkout:', paymentPref.initPoint);
-      window.location.href = paymentPref.initPoint;
-
-    } catch (err: any) {
+      setPixData(pixPayment);
+      setShowPixModal(true);
+    } catch (err: unknown) {
       console.error('Erro ao finalizar pedido:', err);
-      alert(err.message || 'Falha ao processar checkout. Tente novamente.');
+      const message = err instanceof Error ? err.message : 'Falha ao processar checkout. Tente novamente.';
+      alert(message);
     } finally {
       setLoading(false);
     }
   };
 
+  const checkPaymentStatus = useCallback(async () => {
+    if (!currentOrderId) return;
+
+    try {
+      const status = await apiFetch<{ isPaid: boolean }>(`/checkout/check-payment/${currentOrderId}`);
+      if (status.isPaid) {
+        completeOrderSuccess(currentOrderId, 'pix');
+      }
+    } catch (error) {
+      console.error('Erro ao verificar status:', error);
+    }
+  }, [currentOrderId, completeOrderSuccess]);
+
+  const handleSimulatePixPayment = async () => {
+    if (!currentOrderId) return;
+    try {
+      await apiFetch(`/checkout/mock-approve/${currentOrderId}`, { method: 'POST' });
+      completeOrderSuccess(currentOrderId, 'pix');
+    } catch (error) {
+      console.error('Erro ao simular pagamento:', error);
+      alert('Não foi possível simular o pagamento.');
+    }
+  };
+
+  React.useEffect(() => {
+    if (!pixData?.qr_code) {
+      setPixQrImageUrl(null);
+      return;
+    }
+
+    if (pixData.qr_code_base64) {
+      setPixQrImageUrl(`data:image/png;base64,${pixData.qr_code_base64}`);
+      return;
+    }
+
+    const encoded = encodeURIComponent(pixData.qr_code);
+    setPixQrImageUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encoded}`);
+  }, [pixData]);
+
+  React.useEffect(() => {
+    if (!showPixModal || !currentOrderId) return;
+
+    const interval = setInterval(() => {
+      checkPaymentStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [showPixModal, currentOrderId, checkPaymentStatus]);
+
   if (cart.length === 0) {
     return (
-      <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-        <div className="glass" style={{ padding: '3.5rem 2rem', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', textAlign: 'center' }}>
-          <ShoppingBag size={48} style={{ color: 'var(--primary)', opacity: 0.5 }} />
-          <h2 style={{ fontSize: '1.5rem', color: '#fff' }}>Sacola Vazia</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Você não possui nenhum vape ou acessório na sua sacola de compras.</p>
-          <Link to="/products" className="btn btn-primary" style={{ gap: '0.5rem' }}>
-            <ArrowLeft size={16} />
-            Escolher Produtos
-          </Link>
+      <ClientLayout>
+        <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+          <div className="glass" style={{ padding: '3.5rem 2rem', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', textAlign: 'center' }}>
+            <ShoppingBag size={48} style={{ color: 'var(--primary)', opacity: 0.5 }} />
+            <h2 style={{ fontSize: '1.5rem', color: '#fff' }}>Sacola Vazia</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Você não possui nenhum vape ou acessório na sua sacola de compras.</p>
+            <Link to="/products" className="btn btn-primary" style={{ gap: '0.5rem' }}>
+              <ArrowLeft size={16} />
+              Escolher Produtos
+            </Link>
+          </div>
         </div>
-      </div>
+      </ClientLayout>
     );
   }
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
+    <ClientLayout>
+      <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
       <div className="container">
         
         {/* Título */}
@@ -107,7 +197,7 @@ export const CartPage: React.FC = () => {
         </div>
 
         {/* Grid Principal */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', lgGridTemplateColumns: '1.2fr 0.8fr', gap: '3rem', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '3rem', alignItems: 'start' }}>
           
           {/* Lado Esquerdo: Carrinho & Formulário */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
@@ -158,7 +248,7 @@ export const CartPage: React.FC = () => {
                       </div>
 
                       <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--secondary)', width: '80px', textAlign: 'right' }}>
-                        R$ {(item.product.price * item.quantity).toFixed(2)}
+                        {formatCurrency(item.product.price * item.quantity)}
                       </span>
 
                       <button
@@ -210,14 +300,116 @@ export const CartPage: React.FC = () => {
                   />
                 </div>
 
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Forma de Pagamento</label>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType('pix')}
+                      style={{
+                        flex: 1,
+                        padding: '1rem',
+                        border: `2px solid ${paymentType === 'pix' ? 'var(--primary)' : 'var(--border)'}`,
+                        background: paymentType === 'pix' ? 'rgba(168, 85, 247, 0.1)' : '#0a0a0d',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <QrCode size={24} style={{ color: paymentType === 'pix' ? 'var(--primary)' : 'var(--text-muted)' }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: paymentType === 'pix' ? '#fff' : 'var(--text-muted)' }}>
+                        PIX
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>
+                        QR Code na tela
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType('on_delivery')}
+                      style={{
+                        flex: 1,
+                        padding: '1rem',
+                        border: `2px solid ${paymentType === 'on_delivery' ? 'var(--primary)' : 'var(--border)'}`,
+                        background: paymentType === 'on_delivery' ? 'rgba(168, 85, 247, 0.1)' : '#0a0a0d',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <Truck size={24} style={{ color: paymentType === 'on_delivery' ? 'var(--primary)' : 'var(--text-muted)' }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: paymentType === 'on_delivery' ? '#fff' : 'var(--text-muted)' }}>
+                        Na entrega
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>
+                        Crédito ou débito
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {paymentType === 'on_delivery' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Cartão na entrega</label>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryCardType('credit')}
+                        style={{
+                          flex: 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deliveryCardType === 'credit' ? 'var(--secondary)' : 'var(--border)'}`,
+                          background: deliveryCardType === 'credit' ? 'rgba(6, 182, 212, 0.08)' : '#0a0a0d',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          color: deliveryCardType === 'credit' ? '#fff' : 'var(--text-muted)',
+                          fontWeight: 600,
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        Crédito
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryCardType('debit')}
+                        style={{
+                          flex: 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deliveryCardType === 'debit' ? 'var(--secondary)' : 'var(--border)'}`,
+                          background: deliveryCardType === 'debit' ? 'rgba(6, 182, 212, 0.08)' : '#0a0a0d',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          color: deliveryCardType === 'debit' ? '#fff' : 'var(--text-muted)',
+                          fontWeight: 600,
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        Débito
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={loading}
                   className="btn btn-primary"
                   style={{ width: '100%', padding: '1rem', marginTop: '1rem', gap: '0.6rem' }}
                 >
-                  <CreditCard size={18} />
-                  {loading ? 'Redirecionando...' : 'Finalizar Pedido e Pagar com Mercado Pago'}
+                  {paymentType === 'pix' ? <QrCode size={18} /> : <CreditCard size={18} />}
+                  {loading
+                    ? 'Processando...'
+                    : paymentType === 'pix'
+                      ? 'Gerar QR Code PIX'
+                      : 'Confirmar pedido (pagar na entrega)'}
                 </button>
               </form>
             ) : (
@@ -263,7 +455,7 @@ export const CartPage: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
                   <span>Subtotal:</span>
-                  <span>R$ {cartTotal.toFixed(2)}</span>
+                  <span>{formatCurrency(cartTotal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
                   <span>Envio Express:</span>
@@ -274,7 +466,7 @@ export const CartPage: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
                 <span style={{ fontWeight: 600, fontSize: '1rem' }}>Total Geral:</span>
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 12px var(--secondary-glow)' }}>
-                  R$ {cartTotal.toFixed(2)}
+                  {formatCurrency(cartTotal)}
                 </span>
               </div>
 
@@ -288,6 +480,153 @@ export const CartPage: React.FC = () => {
         </div>
 
       </div>
-    </div>
+      </div>
+
+      {/* Modal PIX */}
+      {showPixModal && pixData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem',
+        }}>
+          <div className="glass" style={{
+            maxWidth: '500px',
+            width: '100%',
+            padding: '2rem',
+            border: '1px solid var(--border)',
+            background: '#0a0a0d',
+            position: 'relative',
+          }}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPixModal(false);
+                alert('O pedido foi criado. Você pode concluir o PIX pelo painel ou tentar novamente.');
+              }}
+              style={{
+                position: 'absolute',
+                top: '1rem',
+                right: '1rem',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '0.5rem',
+              }}
+            >
+              <X size={24} />
+            </button>
+
+            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+              <QrCode size={48} style={{ color: 'var(--primary)', marginBottom: '1rem' }} />
+              <h3 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '0.5rem' }}>
+                Pagamento PIX
+              </h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Escaneie o QR Code ou copie o código abaixo
+              </p>
+            </div>
+
+            {pixQrImageUrl ? (
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                <img
+                  src={pixQrImageUrl}
+                  alt="QR Code PIX"
+                  style={{
+                    width: '250px',
+                    height: '250px',
+                    margin: '0 auto',
+                    border: '2px solid var(--border)',
+                    borderRadius: '8px',
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem', padding: '2rem', background: '#0a0a0d', border: '1px dashed var(--border)', borderRadius: '8px' }}>
+                <RefreshCw size={32} style={{ color: 'var(--primary)', animation: 'spin 1s linear infinite' }} />
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '1rem' }}>
+                  Gerando QR Code...
+                </p>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                Código PIX (copie e cole)
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="text"
+                  value={pixData.qr_code || ''}
+                  readOnly
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem',
+                    background: '#0a0a0d',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.8rem',
+                    fontFamily: 'monospace',
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(pixData.qr_code || '');
+                    alert('Código copiado!');
+                  }}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    background: 'var(--primary)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Copiar
+                </button>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              <RefreshCw size={16} style={{ display: 'inline-block', marginRight: '0.5rem' }} />
+              Verificando pagamento automaticamente...
+            </div>
+
+            {pixData.isMock && (
+              <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                <button
+                  type="button"
+                  onClick={handleSimulatePixPayment}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'var(--success)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Simular Pagamento Aprovado
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </ClientLayout>
   );
 };
