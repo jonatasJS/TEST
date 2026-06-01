@@ -5,6 +5,7 @@ import { DollarSign, ShoppingCart, Users, AlertTriangle, ArrowUpRight, Plus, Fil
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminSidebar } from '../components/AdminSidebar';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface DashboardData {
   stats: {
@@ -13,10 +14,12 @@ interface DashboardData {
     totalProducts: number;
     lowStockCount: number;
     totalClients: number;
-    pendingOrders: number;
-    paidOrders: number;
-    shippedOrders: number;
+    awaitingCourier: number;
+    onTheWay: number;
+    deliveredOrders: number;
     cancelledOrders: number;
+    paymentPending: number;
+    paymentPaid: number;
     avgOrderValue: number;
     todayRevenue: number;
     todayOrders: number;
@@ -37,7 +40,8 @@ interface DashboardData {
   recentOrders: Array<{
     id: number;
     customerName: string;
-    status: 'pending' | 'paid' | 'shipped' | 'cancelled';
+    status: string;
+    paymentStatus?: string | null;
     totalAmount: number;
     createdAt: string;
   }>;
@@ -84,11 +88,14 @@ export const AdminDashboard: React.FC = () => {
 
   const { stats, topProducts, recentOrders } = data;
 
-  const orderStatuses = {
-    pending: { label: 'Pendente', color: 'var(--primary)' },
-    paid: { label: 'Está Pago', color: 'var(--success)' },
-    shipped: { label: 'Enviado', color: 'var(--secondary)' },
-    cancelled: { label: 'Cancelado', color: 'var(--error)' },
+  const deliveryLabels: Record<string, string> = {
+    awaiting_courier: 'Aguardando entregador',
+    on_the_way: 'A caminho',
+    delivered: 'Entregue',
+    cancelled: 'Cancelado',
+    pending: 'Aguardando entregador',
+    paid: 'Aguardando entregador',
+    shipped: 'A caminho',
   };
 
   const handleExport = async (type: string, period: string = '30d') => {
@@ -202,7 +209,7 @@ export const AdminDashboard: React.FC = () => {
               <DollarSign size={16} style={{ color: 'var(--success)' }} />
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', textShadow: '0 0 10px var(--success-glow)' }}>
-              R$ {stats.totalRevenue.toFixed(2)}
+              {formatCurrency(stats.totalRevenue)}
             </h2>
             <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>Pedidos pagos e enviados</span>
           </div>
@@ -226,7 +233,7 @@ export const AdminDashboard: React.FC = () => {
               <TrendingUp size={16} style={{ color: '#8b5cf6' }} />
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff' }}>
-              R$ {stats.avgOrderValue.toFixed(2)}
+              {formatCurrency(stats.avgOrderValue)}
             </h2>
             <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>Valor médio por pedido</span>
           </div>
@@ -249,46 +256,33 @@ export const AdminDashboard: React.FC = () => {
         <div className="glass" style={{ padding: '1.5rem', border: '1px solid var(--border)' }}>
           <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '1rem', color: '#fff', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Activity size={18} style={{ color: 'var(--primary)' }} />
-            Status dos Pedidos
+            Entrega e pagamento
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-            
-            {/* Pendentes */}
-            <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                <Clock size={14} style={{ color: 'var(--primary)' }} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase' }}>Pendentes</span>
-              </div>
-              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{stats.pendingOrders}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
+            <div style={{ padding: '1rem', background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--primary)' }}>Aguardando entregador</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', display: 'block' }}>{stats.awaitingCourier}</span>
             </div>
-
-            {/* Pagos */}
-            <div style={{ padding: '1rem', background: 'rgba(6, 182, 212, 0.05)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                <CheckCircle size={14} style={{ color: 'var(--secondary)' }} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--secondary)', textTransform: 'uppercase' }}>Pagos</span>
-              </div>
-              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{stats.paidOrders}</span>
+            <div style={{ padding: '1rem', background: 'rgba(6,182,212,0.05)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--secondary)' }}>A caminho</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', display: 'block' }}>{stats.onTheWay}</span>
             </div>
-
-            {/* Enviados */}
-            <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                <Package size={14} style={{ color: 'var(--success)' }} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--success)', textTransform: 'uppercase' }}>Enviados</span>
-              </div>
-              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{stats.shippedOrders}</span>
+            <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--success)' }}>Entregues</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', display: 'block' }}>{stats.deliveredOrders}</span>
             </div>
-
-            {/* Cancelados */}
-            <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                <XCircle size={14} style={{ color: 'var(--error)' }} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--error)', textTransform: 'uppercase' }}>Cancelados</span>
-              </div>
-              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>{stats.cancelledOrders}</span>
+            <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>Pag. pendente</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', display: 'block' }}>{stats.paymentPending}</span>
             </div>
-
+            <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--success)' }}>Pag. confirmado</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', display: 'block' }}>{stats.paymentPaid}</span>
+            </div>
+            <div style={{ padding: '1rem', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--error)' }}>Cancelados</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', display: 'block' }}>{stats.cancelledOrders}</span>
+            </div>
           </div>
         </div>
 
@@ -303,7 +297,7 @@ export const AdminDashboard: React.FC = () => {
             <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-dark)', textTransform: 'uppercase' }}>Faturamento Hoje</span>
               <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)', display: 'block', marginTop: '0.2rem' }}>
-                R$ {stats.todayRevenue.toFixed(2)}
+                {formatCurrency(stats.todayRevenue)}
               </span>
             </div>
 
@@ -351,15 +345,12 @@ export const AdminDashboard: React.FC = () => {
                         <td style={{ padding: '0.6rem 0.4rem', fontWeight: 700, color: 'var(--primary)' }}>#{ord.id}</td>
                         <td style={{ padding: '0.6rem 0.4rem', color: '#fff' }}>{ord.customerName}</td>
                         <td style={{ padding: '0.6rem 0.4rem' }}>
-                          <span className="badge" style={{
-                            backgroundColor: ord.status === 'paid' ? 'rgba(6,182,212,0.1)' : ord.status === 'shipped' ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)',
-                            color: ord.status === 'paid' ? 'var(--secondary)' : ord.status === 'shipped' ? 'var(--success)' : 'var(--text-muted)'
-                          }}>
-                            {orderStatuses[ord.status]?.label || ord.status}
+                          <span className="badge" style={{ fontSize: '0.7rem' }}>
+                            {deliveryLabels[ord.status] || ord.status}
                           </span>
                         </td>
                         <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right', fontWeight: 700, color: 'var(--secondary)' }}>
-                          R$ {ord.totalAmount.toFixed(2)}
+                          {formatCurrency(ord.totalAmount)}
                         </td>
                       </tr>
                     ))}
@@ -400,7 +391,7 @@ export const AdminDashboard: React.FC = () => {
 
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--success)' }}>
-                        R$ {prod.revenueGenerated.toFixed(2)}
+                        {formatCurrency(prod.revenueGenerated)}
                       </span>
                     </div>
 

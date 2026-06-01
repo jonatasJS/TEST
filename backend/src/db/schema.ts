@@ -34,14 +34,28 @@ export const products = pgTable('products', {
 export const orders = pgTable('orders', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
-  status: varchar('status', { length: 50 }).default('pending').notNull(), // 'pending', 'paid', 'shipped', 'cancelled'
+  /** Entrega: awaiting_courier | on_the_way | delivered | cancelled */
+  status: varchar('status', { length: 50 }).default('awaiting_courier').notNull(),
   totalAmount: doublePrecision('total_amount').notNull(),
-  paymentId: varchar('payment_id', { length: 255 }), // ID do pagamento no Mercado Pago
-  paymentStatus: varchar('payment_status', { length: 100 }), // Status do Mercado Pago (approved, in_process, rejected)
+  paymentId: varchar('payment_id', { length: 255 }),
+  /** Pagamento: pending | paid | cancelled */
+  paymentStatus: varchar('payment_status', { length: 50 }).default('pending').notNull(),
+  /** pix | on_delivery_credit | on_delivery_debit */
+  paymentMethod: varchar('payment_method', { length: 50 }),
+  stockDeducted: boolean('stock_deducted').default(false).notNull(),
   shippingAddress: text('shipping_address').notNull(),
   contactPhone: varchar('contact_phone', { length: 50 }).notNull(),
   customerName: varchar('customer_name', { length: 255 }).notNull(),
   customerEmail: varchar('customer_email', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -57,6 +71,14 @@ export const orderItems = pgTable('order_items', {
 // Relações entre Tabelas (Drizzle Relations)
 export const usersRelations = relations(users, ({ many }) => ({
   orders: many(orders),
+  pushSubscriptions: many(pushSubscriptions),
+}));
+
+export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [pushSubscriptions.userId],
+    references: [users.id],
+  }),
 }));
 
 export const productsRelations = relations(products, ({ many }) => ({

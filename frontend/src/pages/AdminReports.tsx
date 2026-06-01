@@ -5,6 +5,7 @@ import { TrendingUp, DollarSign, ShoppingCart, Users, Download, ArrowUpRight, Ar
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminLayout } from '../components/AdminLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface ReportData {
   period: string;
@@ -63,13 +64,6 @@ export const AdminReports: React.FC = () => {
       </div>
     );
   }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
 
   return (
     <AdminLayout>

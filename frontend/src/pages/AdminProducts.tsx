@@ -6,6 +6,7 @@ import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { Product } from '../hooks/useCart';
 import { AdminLayout } from '../components/AdminLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const AdminProducts: React.FC = () => {
   const { isAdmin, authLoading } = useAuth() as any;
@@ -213,7 +214,7 @@ export const AdminProducts: React.FC = () => {
                       {prod.stock} un
                     </span>
                   </td>
-                  <td style={{ padding: '0.8rem 0.5rem', fontWeight: 700, color: 'var(--secondary)' }}>R$ {prod.price.toFixed(2)}</td>
+                  <td style={{ padding: '0.8rem 0.5rem', fontWeight: 700, color: 'var(--secondary)' }}>{formatCurrency(prod.price)}</td>
                   <td style={{ padding: '0.8rem 0.5rem' }}>
                     <span className={prod.isActive ? 'badge badge-success' : 'badge badge-danger'}>
                       {prod.isActive ? 'Ativo' : 'Inativo'}

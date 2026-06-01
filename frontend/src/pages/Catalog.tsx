@@ -6,6 +6,7 @@ import { Search, SlidersHorizontal, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { Product } from '../hooks/useCart';
 import { ClientLayout } from '../components/ClientLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const Catalog: React.FC = () => {
   const searchParams = useSearch({ from: '/products' }) as any;
@@ -303,7 +304,7 @@ export const Catalog: React.FC = () => {
                       <div>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Preço</span>
                         <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 10px var(--secondary-glow)' }}>
-                          R$ {product.price.toFixed(2)}
+                          {formatCurrency(product.price)}
                         </span>
                       </div>
                       

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index';
 import { orders } from '../db/schema';
+import { normalizePaymentStatus } from '../utils/orderStatus';
 
 const ACCESS_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:5000/api/checkout/webhook';
@@ -163,11 +164,14 @@ export const createPixPayment = async (req: Request, res: Response) => {
     // 3. Criar pagamento PIX na API do Mercado Pago
     console.log('Criando pagamento PIX:', JSON.stringify(paymentBody, null, 2));
 
+    const idempotencyKey = `pix-order-${order.id}`;
+
     const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
+        'X-Idempotency-Key': idempotencyKey,
       },
       body: JSON.stringify(paymentBody),
     });
@@ -254,29 +258,26 @@ export const handleWebhook = async (req: Request, res: Response) => {
     if (status === 'approved') {
       await db.update(orders)
         .set({
-          status: 'paid',
           paymentId: String(paymentId),
-          paymentStatus: status,
+          paymentStatus: 'paid',
         })
         .where(eq(orders.id, parseInt(orderId)));
 
-      console.log(`Pedido #${orderId} atualizado com sucesso para PAGO.`);
+      console.log(`Pedido #${orderId} — pagamento confirmado.`);
     } else if (status === 'rejected' || status === 'cancelled') {
       await db.update(orders)
         .set({
-          status: 'cancelled',
           paymentId: String(paymentId),
-          paymentStatus: status,
+          paymentStatus: 'cancelled',
         })
         .where(eq(orders.id, parseInt(orderId)));
 
-      console.log(`Pedido #${orderId} atualizado com sucesso para CANCELADO.`);
+      console.log(`Pedido #${orderId} — pagamento cancelado/recusado.`);
     } else {
-      // Outros status como 'in_process' (pendente)
       await db.update(orders)
         .set({
           paymentId: String(paymentId),
-          paymentStatus: status,
+          paymentStatus: 'pending',
         })
         .where(eq(orders.id, parseInt(orderId)));
     }
@@ -306,21 +307,24 @@ export const checkPaymentStatus = async (req: Request, res: Response) => {
     }
 
     // Se não tem paymentId, não foi para o Mercado Pago ainda
+    const currentPayment = normalizePaymentStatus(order.paymentStatus, order.status);
+
     if (!order.paymentId) {
       return res.status(200).json({
         orderId: order.id,
-        status: order.status,
-        paymentStatus: order.paymentStatus || 'not_initiated',
-        message: 'Pagamento não iniciado',
+        deliveryStatus: order.status,
+        paymentStatus: currentPayment,
+        isPaid: currentPayment === 'paid',
+        message: 'Pagamento não iniciado no gateway',
       });
     }
 
-    // Se estiver em modo teste e sem token válido
     if (!ACCESS_TOKEN || ACCESS_TOKEN.includes('mock')) {
       return res.status(200).json({
         orderId: order.id,
-        status: order.status,
-        paymentStatus: order.paymentStatus || 'mock',
+        deliveryStatus: order.status,
+        paymentStatus: currentPayment,
+        isPaid: currentPayment === 'paid',
         message: 'Modo de teste - status simulado',
       });
     }
@@ -342,38 +346,65 @@ export const checkPaymentStatus = async (req: Request, res: Response) => {
     const mpStatus = paymentDetails.status;
 
     // Atualizar banco se houver mudança
-    if (mpStatus !== order.paymentStatus) {
-      if (mpStatus === 'approved') {
-        await db.update(orders)
-          .set({
-            status: 'paid',
-            paymentStatus: mpStatus,
-          })
-          .where(eq(orders.id, parseInt(orderId)));
-      } else if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
-        await db.update(orders)
-          .set({
-            status: 'cancelled',
-            paymentStatus: mpStatus,
-          })
-          .where(eq(orders.id, parseInt(orderId)));
-      } else {
-        await db.update(orders)
-          .set({
-            paymentStatus: mpStatus,
-          })
-          .where(eq(orders.id, parseInt(orderId)));
-      }
+    if (mpStatus === 'approved') {
+      await db.update(orders)
+        .set({ paymentStatus: 'paid' })
+        .where(eq(orders.id, parseInt(orderId)));
+    } else if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
+      await db.update(orders)
+        .set({ paymentStatus: 'cancelled' })
+        .where(eq(orders.id, parseInt(orderId)));
+    } else {
+      await db.update(orders)
+        .set({ paymentStatus: 'pending' })
+        .where(eq(orders.id, parseInt(orderId)));
     }
+
+    const paymentStatus = mpStatus === 'approved' ? 'paid' : mpStatus === 'rejected' || mpStatus === 'cancelled' ? 'cancelled' : 'pending';
 
     return res.status(200).json({
       orderId: order.id,
-      status: mpStatus === 'approved' ? 'paid' : order.status,
-      paymentStatus: mpStatus,
+      deliveryStatus: order.status,
+      paymentStatus,
+      isPaid: paymentStatus === 'paid',
       message: `Status do pagamento: ${mpStatus}`,
     });
   } catch (error: any) {
     console.error('Erro ao verificar status do pagamento:', error);
     return res.status(500).json({ message: 'Erro interno ao verificar status', error: error.message });
+  }
+};
+
+export const mockApprovePixPayment = async (req: Request, res: Response) => {
+  const { orderId } = req.params;
+
+  if (!orderId) {
+    return res.status(400).json({ message: 'ID do pedido é obrigatório.' });
+  }
+
+  if (ACCESS_TOKEN && !ACCESS_TOKEN.includes('mock')) {
+    return res.status(403).json({ message: 'Disponível apenas em modo de teste.' });
+  }
+
+  try {
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, parseInt(orderId)),
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Pedido não encontrado.' });
+    }
+
+    await db.update(orders)
+      .set({
+        paymentStatus: 'paid',
+        paymentId: order.paymentId || `mock-pix-${order.id}`,
+      })
+      .where(eq(orders.id, parseInt(orderId)));
+
+    return res.status(200).json({ message: 'Pagamento simulado com sucesso.', isPaid: true, paymentStatus: 'paid' });
+  } catch (error: any) {
+    console.error('Erro ao simular pagamento PIX:', error);
+    return res.status(500).json({ message: 'Erro ao simular pagamento.', error: error.message });
   }
 };

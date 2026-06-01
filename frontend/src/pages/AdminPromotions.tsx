@@ -5,6 +5,7 @@ import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, Calendar, Percent, DollarS
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminLayout } from '../components/AdminLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface Promotion {
   id: number;
@@ -270,7 +271,7 @@ export const AdminPromotions: React.FC = () => {
                   ) : promo.type === 'fixed_amount' ? (
                     <>
                       <DollarSign size={24} />
-                      <span>R$ {promo.value.toFixed(2)} OFF</span>
+                      <span>{formatCurrency(promo.value)} OFF</span>
                     </>
                   ) : (
                     <>
@@ -289,7 +290,7 @@ export const AdminPromotions: React.FC = () => {
                     </span>
                   </div>
                   {promo.minPurchaseAmount > 0 && (
-                    <div>Compra mínima: R$ {promo.minPurchaseAmount.toFixed(2)}</div>
+                    <div>Compra mínima: {formatCurrency(promo.minPurchaseAmount)}</div>
                   )}
                   {promo.usageLimit && (
                     <div>Usos: {promo.currentUsage}/{promo.usageLimit}</div>

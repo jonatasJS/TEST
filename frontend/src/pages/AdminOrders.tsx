@@ -5,6 +5,15 @@ import { Mail, Phone, MapPin, Calendar } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminLayout } from '../components/AdminLayout';
+import {
+  DeliveryStatus,
+  PaymentStatus,
+  deliveryStatusLabel,
+  normalizeDeliveryStatus,
+  normalizePaymentStatus,
+  paymentStatusLabel,
+} from '../utils/orderLabels';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface OrderItem {
   id: number;
@@ -21,7 +30,10 @@ interface OrderItem {
 interface Order {
   id: number;
   createdAt: string;
-  status: 'pending' | 'paid' | 'shipped' | 'cancelled';
+  status: string;
+  paymentStatus?: string | null;
+  deliveryStatus?: DeliveryStatus;
+  paymentMethod?: string | null;
   totalAmount: number;
   shippingAddress: string;
   contactPhone: string;
@@ -52,10 +64,17 @@ export const AdminOrders: React.FC = () => {
 
   // Mutação para atualizar status de pedido
   const statusMutation = useMutation({
-    mutationFn: (variables: { id: number; status: Order['status'] }) => {
+    mutationFn: (variables: {
+      id: number;
+      deliveryStatus?: DeliveryStatus;
+      paymentStatus?: PaymentStatus;
+    }) => {
       return apiFetch(`/orders/admin/${variables.id}/status`, {
         method: 'PUT',
-        body: JSON.stringify({ status: variables.status }),
+        body: JSON.stringify({
+          deliveryStatus: variables.deliveryStatus,
+          paymentStatus: variables.paymentStatus,
+        }),
       });
     },
     onSuccess: () => {
@@ -76,9 +95,15 @@ export const AdminOrders: React.FC = () => {
     );
   }
 
-  const handleStatusChange = (orderId: number, nextStatus: Order['status']) => {
-    if (confirm(`Deseja alterar o status do pedido #${orderId} para "${nextStatus.toUpperCase()}"?`)) {
-      statusMutation.mutate({ id: orderId, status: nextStatus });
+  const handleDeliveryChange = (orderId: number, nextStatus: DeliveryStatus) => {
+    if (confirm(`Alterar entrega do pedido #${orderId} para "${deliveryStatusLabel[nextStatus]}"?`)) {
+      statusMutation.mutate({ id: orderId, deliveryStatus: nextStatus });
+    }
+  };
+
+  const handlePaymentChange = (orderId: number, nextStatus: PaymentStatus) => {
+    if (confirm(`Alterar pagamento do pedido #${orderId} para "${paymentStatusLabel[nextStatus]}"?`)) {
+      statusMutation.mutate({ id: orderId, paymentStatus: nextStatus });
     }
   };
 
@@ -93,7 +118,7 @@ export const AdminOrders: React.FC = () => {
             GERENCIAR <span style={{ color: 'var(--secondary)' }}>PEDIDOS</span>
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '0.2rem' }}>
-            Atualize o status dos pagamentos e despache os pacotes para transporte.
+            Gerencie pagamento e entrega separadamente. O estoque só baixa quando o pedido for marcado como entregue.
           </p>
         </div>
 
@@ -131,29 +156,32 @@ export const AdminOrders: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Modificador de Status */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Status do Pedido:</span>
-                      <div style={{ position: 'relative' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.8rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pagamento:</span>
                         <select
-                          value={order.status}
-                          onChange={(e) => handleStatusChange(order.id, e.target.value as Order['status'])}
+                          value={normalizePaymentStatus(order.paymentStatus, order.status)}
+                          onChange={(e) => handlePaymentChange(order.id, e.target.value as PaymentStatus)}
                           className="input-field"
-                          style={{
-                            padding: '0.4rem 2rem 0.4rem 0.8rem',
-                            fontSize: '0.85rem',
-                            fontWeight: 600,
-                            borderRadius: '6px',
-                            background: '#0a0a0d',
-                            borderColor: order.status === 'paid' ? 'var(--secondary)' : order.status === 'shipped' ? 'var(--success)' : 'var(--border)',
-                            cursor: 'pointer',
-                            color: order.status === 'paid' ? 'var(--secondary)' : order.status === 'shipped' ? 'var(--success)' : '#fff',
-                          }}
+                          style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem', minWidth: '140px' }}
                         >
-                          <option value="pending" style={{ color: '#fff' }}>Pendente</option>
-                          <option value="paid" style={{ color: '#fff' }}>Pago</option>
-                          <option value="shipped" style={{ color: '#fff' }}>Enviado</option>
-                          <option value="cancelled" style={{ color: '#fff' }}>Cancelado</option>
+                          <option value="pending">Pendente</option>
+                          <option value="paid">Pago</option>
+                          <option value="cancelled">Cancelado</option>
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Entrega:</span>
+                        <select
+                          value={normalizeDeliveryStatus(order.deliveryStatus || order.status)}
+                          onChange={(e) => handleDeliveryChange(order.id, e.target.value as DeliveryStatus)}
+                          className="input-field"
+                          style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem', minWidth: '180px' }}
+                        >
+                          <option value="awaiting_courier">Aguardando entregador</option>
+                          <option value="on_the_way">A caminho</option>
+                          <option value="delivered">Entregue</option>
+                          <option value="cancelled">Cancelado</option>
                         </select>
                       </div>
                     </div>
@@ -192,8 +220,19 @@ export const AdminOrders: React.FC = () => {
                     <div>
                       <h4 style={{ fontSize: '0.8rem', color: 'var(--text-dark)', textTransform: 'uppercase', marginBottom: '0.4rem', fontWeight: 600 }}>Informações Financeiras</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                        <span>Total Pago: <strong style={{ color: 'var(--secondary)' }}>R$ {order.totalAmount.toFixed(2)}</strong></span>
-                        <span>Gateway: <span style={{ color: 'var(--success)', fontWeight: 600 }}>Mercado Pago</span></span>
+                        <span>Total: <strong style={{ color: 'var(--secondary)' }}>{formatCurrency(order.totalAmount)}</strong></span>
+                        <span>
+                          Forma:{' '}
+                          <strong style={{ color: '#fff' }}>
+                            {order.paymentMethod === 'pix'
+                              ? 'PIX'
+                              : order.paymentMethod?.includes('credit')
+                                ? 'Cartão crédito (na entrega)'
+                                : order.paymentMethod?.includes('debit')
+                                  ? 'Cartão débito (na entrega)'
+                                  : '—'}
+                          </strong>
+                        </span>
                       </div>
                     </div>
 
@@ -226,7 +265,7 @@ export const AdminOrders: React.FC = () => {
                           </div>
 
                           <div style={{ textAlign: 'right', fontWeight: 600 }}>
-                            R$ {(item.priceAtPurchase * item.quantity).toFixed(2)}
+                            {formatCurrency(item.priceAtPurchase * item.quantity)}
                           </div>
                         </div>
                       ))}

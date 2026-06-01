@@ -27,7 +27,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     const revenueResult = await db
       .select({ total: sum(orders.totalAmount) })
       .from(orders)
-      .where(and(eq(orders.status, 'shipped'), eq(orders.paymentStatus, 'approved')));
+      .where(and(eq(orders.status, 'delivered'), eq(orders.paymentStatus, 'paid')));
     const totalRevenue = parseFloat(revenueResult[0]?.total || '0');
 
     // 2. Total de Pedidos
@@ -57,29 +57,41 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
     const totalClients = clientsCountResult[0]?.total || 0;
 
     // 6. Pedidos por status
-    const pendingOrdersResult = await db
+    const awaitingCourierResult = await db
       .select({ total: count(orders.id) })
       .from(orders)
-      .where(eq(orders.status, 'pending'));
-    const pendingOrders = pendingOrdersResult[0]?.total || 0;
+      .where(eq(orders.status, 'awaiting_courier'));
+    const awaitingCourier = awaitingCourierResult[0]?.total || 0;
 
-    const paidOrdersResult = await db
+    const onTheWayResult = await db
       .select({ total: count(orders.id) })
       .from(orders)
-      .where(eq(orders.status, 'paid'));
-    const paidOrders = paidOrdersResult[0]?.total || 0;
+      .where(eq(orders.status, 'on_the_way'));
+    const onTheWay = onTheWayResult[0]?.total || 0;
 
-    const shippedOrdersResult = await db
+    const deliveredOrdersResult = await db
       .select({ total: count(orders.id) })
       .from(orders)
-      .where(eq(orders.status, 'shipped'));
-    const shippedOrders = shippedOrdersResult[0]?.total || 0;
+      .where(eq(orders.status, 'delivered'));
+    const deliveredOrders = deliveredOrdersResult[0]?.total || 0;
 
     const cancelledOrdersResult = await db
       .select({ total: count(orders.id) })
       .from(orders)
       .where(eq(orders.status, 'cancelled'));
     const cancelledOrders = cancelledOrdersResult[0]?.total || 0;
+
+    const paymentPendingResult = await db
+      .select({ total: count(orders.id) })
+      .from(orders)
+      .where(eq(orders.paymentStatus, 'pending'));
+    const paymentPending = paymentPendingResult[0]?.total || 0;
+
+    const paymentPaidResult = await db
+      .select({ total: count(orders.id) })
+      .from(orders)
+      .where(eq(orders.paymentStatus, 'paid'));
+    const paymentPaid = paymentPaidResult[0]?.total || 0;
 
     // 7. Ticket Médio
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
@@ -89,8 +101,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       .select({ total: sum(orders.totalAmount) })
       .from(orders)
       .where(and(
-        eq(orders.status, 'shipped'),
-        eq(orders.paymentStatus, 'approved'),
+        eq(orders.status, 'delivered'),
+        eq(orders.paymentStatus, 'paid'),
         sql`${orders.createdAt} >= CURRENT_DATE`
       ));
     const todayRevenue = parseFloat(todayRevenueResult[0]?.total || '0');
@@ -114,7 +126,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
       .innerJoin(products, eq(orderItems.productId, products.id))
-      .where(and(eq(orders.status, 'shipped'), eq(orders.paymentStatus, 'approved')))
+      .where(and(eq(orders.status, 'delivered'), eq(orders.paymentStatus, 'paid')))
       .groupBy(orderItems.productId, products.name, products.flavor, products.imageUrl)
       .orderBy(desc(sql`SUM(${orderItems.quantity})`))
       .limit(5);
@@ -128,8 +140,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
       })
       .from(orders)
       .where(and(
-        eq(orders.status, 'shipped'),
-        eq(orders.paymentStatus, 'approved'),
+        eq(orders.status, 'delivered'),
+        eq(orders.paymentStatus, 'paid'),
         sql`${orders.createdAt} >= NOW() - INTERVAL '7 days'`
       ))
       .groupBy(sql`TO_CHAR(${orders.createdAt}, 'DD/MM')`, sql`DATE(${orders.createdAt})`)
@@ -143,6 +155,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
         id: true,
         customerName: true,
         status: true,
+        paymentStatus: true,
         totalAmount: true,
         createdAt: true,
       },
@@ -155,10 +168,12 @@ export const getDashboardStats = async (req: AuthRequest, res: Response) => {
         totalProducts,
         lowStockCount,
         totalClients,
-        pendingOrders,
-        paidOrders,
-        shippedOrders,
+        awaitingCourier,
+        onTheWay,
+        deliveredOrders,
         cancelledOrders,
+        paymentPending,
+        paymentPaid,
         avgOrderValue,
         todayRevenue,
         todayOrders,
@@ -190,7 +205,7 @@ export const getReports = async (req: AuthRequest, res: Response) => {
     const revenueResult = await db
       .select({ total: sum(orders.totalAmount) })
       .from(orders)
-      .where(and(eq(orders.status, 'paid'), dateCondition));
+      .where(and(eq(orders.paymentStatus, 'paid'), dateCondition));
     const totalRevenue = parseFloat(revenueResult[0]?.total || '0');
 
     // Total de pedidos no período
@@ -218,7 +233,7 @@ export const getReports = async (req: AuthRequest, res: Response) => {
         orders: count(orders.id).mapWith(Number),
       })
       .from(orders)
-      .where(and(eq(orders.status, 'paid'), dateCondition))
+      .where(and(eq(orders.paymentStatus, 'paid'), dateCondition))
       .groupBy(sql`TO_CHAR(${orders.createdAt}, 'DD/MM')`, sql`DATE(${orders.createdAt})`)
       .orderBy(sql`DATE(${orders.createdAt})`)
       .limit(30);
@@ -236,7 +251,7 @@ export const getReports = async (req: AuthRequest, res: Response) => {
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
       .innerJoin(products, eq(orderItems.productId, products.id))
-      .where(and(eq(orders.status, 'paid'), dateCondition))
+      .where(and(eq(orders.paymentStatus, 'paid'), dateCondition))
       .groupBy(products.id, products.name, products.category, products.stock)
       .orderBy(desc(sql`SUM(${orderItems.quantity} * ${orderItems.priceAtPurchase})`))
       .limit(10);
@@ -251,7 +266,7 @@ export const getReports = async (req: AuthRequest, res: Response) => {
       .from(orders)
       .innerJoin(orderItems, eq(orders.id, orderItems.orderId))
       .innerJoin(products, eq(orderItems.productId, products.id))
-      .where(and(eq(orders.status, 'paid'), dateCondition))
+      .where(and(eq(orders.paymentStatus, 'paid'), dateCondition))
       .groupBy(products.category)
       .orderBy(desc(sql`SUM(${orders.totalAmount})`));
 
@@ -399,7 +414,7 @@ export const exportSalesCSV = async (req: AuthRequest, res: Response) => {
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))
       .innerJoin(products, eq(orderItems.productId, products.id))
-      .where(and(eq(orders.status, 'paid'), dateCondition))
+      .where(and(eq(orders.paymentStatus, 'paid'), dateCondition))
       .groupBy(products.id, products.name, products.category, products.flavor)
       .orderBy(desc(sql`SUM(${orderItems.quantity} * ${orderItems.priceAtPurchase})`));
 

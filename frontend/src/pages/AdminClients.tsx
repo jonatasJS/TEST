@@ -5,6 +5,7 @@ import { Search, Mail, Calendar, ShoppingBag, DollarSign, Shield, Trash2, Chevro
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminLayout } from '../components/AdminLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface Client {
   id: number;
@@ -232,7 +233,7 @@ export const AdminClients: React.FC = () => {
                               <span>Total Gasto</span>
                             </div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff' }}>
-                              R$ {clientDetails.stats.totalSpent.toFixed(2)}
+                              {formatCurrency(clientDetails.stats.totalSpent)}
                             </div>
                           </div>
 
@@ -278,7 +279,7 @@ export const AdminClients: React.FC = () => {
                                     </span>
                                   </div>
                                   <span style={{ fontWeight: 700, color: 'var(--secondary)' }}>
-                                    R$ {order.totalAmount.toFixed(2)}
+                                    {formatCurrency(order.totalAmount)}
                                   </span>
                                 </div>
                               ))}

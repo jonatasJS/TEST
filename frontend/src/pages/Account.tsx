@@ -17,6 +17,15 @@ import {
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { ClientLayout } from '../components/ClientLayout';
+import {
+  DeliveryStatus,
+  PaymentStatus,
+  deliveryStatusLabel,
+  normalizeDeliveryStatus,
+  normalizePaymentStatus,
+  paymentStatusLabel,
+} from '../utils/orderLabels';
+import { formatCurrency } from '../utils/formatCurrency';
 
 interface OrderItem {
   id: number;
@@ -33,7 +42,9 @@ interface OrderItem {
 interface Order {
   id: number;
   createdAt: string;
-  status: 'pending' | 'paid' | 'shipped' | 'cancelled';
+  status: string;
+  paymentStatus?: string | null;
+  deliveryStatus?: DeliveryStatus;
   totalAmount: number;
   shippingAddress: string;
   contactPhone: string;
@@ -170,23 +181,67 @@ export const Account: React.FC = () => {
     );
   }
 
-  const getStatusBadge = (status: Order['status']) => {
-    switch (status) {
-      case 'paid':
-        return <span className="badge badge-paid">Aprovado</span>;
-      case 'shipped':
-        return <span className="badge badge-success">Enviado</span>;
-      case 'cancelled':
-        return <span className="badge badge-danger">Cancelado</span>;
-      default:
-        return <span className="badge badge-pending">Pendente</span>;
-    }
+  const getDeliveryBadge = (status: string) => {
+    const key = normalizeDeliveryStatus(status);
+    const color =
+      key === 'delivered'
+        ? 'var(--success)'
+        : key === 'on_the_way'
+          ? 'var(--secondary)'
+          : key === 'cancelled'
+            ? 'var(--error)'
+            : 'var(--primary)';
+    return (
+      <span className="badge badge-pending" style={{ borderColor: color, color }}>
+        {deliveryStatusLabel[key]}
+      </span>
+    );
+  };
+
+  const getPaymentBadge = (order: Order) => {
+    const key: PaymentStatus = normalizePaymentStatus(order.paymentStatus, order.status);
+    const color =
+      key === 'paid' ? 'var(--success)' : key === 'cancelled' ? 'var(--error)' : '#f59e0b';
+    return (
+      <span className="badge badge-paid" style={{ borderColor: color, color }}>
+        {paymentStatusLabel[key]}
+      </span>
+    );
   };
 
   return (
     <ClientLayout>
       <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
       <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+
+        {/* Banner: Pedido com pagamento na entrega */}
+        {searchParams.payment === 'delivery' && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass"
+            style={{
+              padding: '1.5rem',
+              background: 'rgba(6, 182, 212, 0.05)',
+              border: '1px solid rgba(6, 182, 212, 0.3)',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+            }}
+          >
+            <CheckCircle2 size={36} style={{ color: 'var(--secondary)', flexShrink: 0 }} />
+            <div>
+              <h3 style={{ fontSize: '1.1rem', color: '#fff', fontWeight: 700 }}>
+                PEDIDO CONFIRMADO!
+              </h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                Seu pedido #{searchParams.orderId || ''} foi registrado. O pagamento será feito na entrega
+                com o cartão escolhido (crédito ou débito).
+              </p>
+            </div>
+          </motion.div>
+        )}
 
         {/* Banner: Pagamento Confirmado */}
         {searchParams.payment === 'success' && (
@@ -597,7 +652,10 @@ export const Account: React.FC = () => {
                         })}
                       </span>
                     </div>
-                    {getStatusBadge(order.status)}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      {getPaymentBadge(order)}
+                      {getDeliveryBadge(order.deliveryStatus || order.status)}
+                    </div>
                   </div>
 
                   {/* Detalhes de Entrega */}
@@ -662,7 +720,7 @@ export const Account: React.FC = () => {
                           )}
                         </div>
                         <span style={{ fontWeight: 600 }}>
-                          R$ {(item.priceAtPurchase * item.quantity).toFixed(2)}
+                          {formatCurrency(item.priceAtPurchase * item.quantity)}
                         </span>
                       </div>
                     ))}
@@ -681,7 +739,7 @@ export const Account: React.FC = () => {
                       Valor Total Pago:
                     </span>
                     <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--secondary)' }}>
-                      R$ {order.totalAmount.toFixed(2)}
+                      {formatCurrency(order.totalAmount)}
                     </span>
                   </div>
                 </div>

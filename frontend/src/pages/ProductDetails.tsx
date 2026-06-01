@@ -5,6 +5,7 @@ import { ShoppingBag, ArrowLeft, Plus, Minus, Star, Flame, Shield } from 'lucide
 import { apiFetch } from '../config/api';
 import { useCart, Product } from '../hooks/useCart';
 import { ClientLayout } from '../components/ClientLayout';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const ProductDetails: React.FC = () => {
   const { id } = useParams({ from: '/products/$id' }) as any;
@@ -174,7 +175,7 @@ export const ProductDetails: React.FC = () => {
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-dark)', textTransform: 'uppercase', fontWeight: 600 }}>Preço Especial</span>
                 <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 15px var(--secondary-glow)' }}>
-                  R$ {product.price.toFixed(2)}
+                  {formatCurrency(product.price)}
                 </h2>
               </div>
 
