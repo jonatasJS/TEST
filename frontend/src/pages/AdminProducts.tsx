@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, ToggleLeft, ToggleRight, Search, X, Box, Check, RefreshCw } from 'lucide-react';
+import { Plus, Edit, ToggleLeft, ToggleRight, Search, X, Check } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { Product } from '../hooks/useCart';
+import { AdminLayout } from '../components/AdminLayout';
 
 export const AdminProducts: React.FC = () => {
   const { isAdmin, authLoading } = useAuth() as any;
@@ -151,7 +152,7 @@ export const AdminProducts: React.FC = () => {
   }
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
+    <AdminLayout>
       <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         
         {/* Top Header */}
@@ -328,6 +329,6 @@ export const AdminProducts: React.FC = () => {
         )}
 
       </div>
-    </div>
+    </AdminLayout>
   );
 };

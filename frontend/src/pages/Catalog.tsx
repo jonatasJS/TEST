@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearch, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Search, SlidersHorizontal, Check, AlertCircle } from 'lucide-react';
+import { Search, SlidersHorizontal, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { Product } from '../hooks/useCart';
+import { ClientLayout } from '../components/ClientLayout';
 
 export const Catalog: React.FC = () => {
   const searchParams = useSearch({ from: '/products' }) as any;
@@ -38,7 +39,7 @@ export const Catalog: React.FC = () => {
   };
 
   // Buscar produtos com filtros ativos via TanStack Query
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['products', selectedCategory, searchParams.search, sortBy],
     queryFn: () => {
       const qParams = new URLSearchParams();
@@ -64,8 +65,9 @@ export const Catalog: React.FC = () => {
   ];
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '3rem 0' }}>
-      <div className="container">
+    <ClientLayout>
+      <div style={{ background: '#050505', minHeight: '100vh', padding: '3rem 0' }}>
+        <div className="container">
         
         {/* Título da Seção */}
         <div style={{ marginBottom: '2.5rem' }}>
@@ -91,7 +93,7 @@ export const Catalog: React.FC = () => {
           }}
         >
           {/* Busca e Sort */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', mdGridTemplateColumns: '2fr 1fr', gap: '1rem', width: '100%' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', width: '100%' }}>
             
             <form onSubmit={handleSearchSubmit} style={{ position: 'relative', display: 'flex', width: '100%' }}>
               <input
@@ -321,7 +323,8 @@ export const Catalog: React.FC = () => {
           </div>
         )}
 
+        </div>
       </div>
-    </div>
+    </ClientLayout>
   );
 };

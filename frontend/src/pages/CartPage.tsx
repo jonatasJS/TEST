@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ShoppingBag, ArrowLeft, Trash2, CreditCard, ChevronRight, Lock, CheckCircle } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, Trash2, CreditCard, Lock } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch } from '../config/api';
+import { ClientLayout } from '../components/ClientLayout';
 
 export const CartPage: React.FC = () => {
   const { cart, cartTotal, updateQuantity, removeFromCart, clearCart } = useCart();
@@ -14,7 +15,6 @@ export const CartPage: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
-  const [successOrderId, setSuccessOrderId] = useState<number | null>(null);
 
   // Garantir sincronia caso o usuário logue depois
   React.useEffect(() => {
@@ -78,22 +78,25 @@ export const CartPage: React.FC = () => {
 
   if (cart.length === 0) {
     return (
-      <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-        <div className="glass" style={{ padding: '3.5rem 2rem', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', textAlign: 'center' }}>
-          <ShoppingBag size={48} style={{ color: 'var(--primary)', opacity: 0.5 }} />
-          <h2 style={{ fontSize: '1.5rem', color: '#fff' }}>Sacola Vazia</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Você não possui nenhum vape ou acessório na sua sacola de compras.</p>
-          <Link to="/products" className="btn btn-primary" style={{ gap: '0.5rem' }}>
-            <ArrowLeft size={16} />
-            Escolher Produtos
-          </Link>
+      <ClientLayout>
+        <div style={{ background: '#050505', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+          <div className="glass" style={{ padding: '3.5rem 2rem', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', textAlign: 'center' }}>
+            <ShoppingBag size={48} style={{ color: 'var(--primary)', opacity: 0.5 }} />
+            <h2 style={{ fontSize: '1.5rem', color: '#fff' }}>Sacola Vazia</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Você não possui nenhum vape ou acessório na sua sacola de compras.</p>
+            <Link to="/products" className="btn btn-primary" style={{ gap: '0.5rem' }}>
+              <ArrowLeft size={16} />
+              Escolher Produtos
+            </Link>
+          </div>
         </div>
-      </div>
+      </ClientLayout>
     );
   }
 
   return (
-    <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
+    <ClientLayout>
+      <div style={{ background: '#050505', minHeight: '100vh', padding: '3.5rem 0' }}>
       <div className="container">
         
         {/* Título */}
@@ -107,7 +110,7 @@ export const CartPage: React.FC = () => {
         </div>
 
         {/* Grid Principal */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', lgGridTemplateColumns: '1.2fr 0.8fr', gap: '3rem', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '3rem', alignItems: 'start' }}>
           
           {/* Lado Esquerdo: Carrinho & Formulário */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
@@ -288,6 +291,7 @@ export const CartPage: React.FC = () => {
         </div>
 
       </div>
-    </div>
+      </div>
+    </ClientLayout>
   );
 };

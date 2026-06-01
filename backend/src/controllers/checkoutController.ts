@@ -180,3 +180,93 @@ export const handleWebhook = async (req: Request, res: Response) => {
     return res.status(500).send('Erro interno do servidor no webhook.');
   }
 };
+
+export const checkPaymentStatus = async (req: Request, res: Response) => {
+  const { orderId } = req.params;
+
+  if (!orderId) {
+    return res.status(400).json({ message: 'ID do pedido é obrigatório.' });
+  }
+
+  try {
+    // Buscar pedido no banco
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, parseInt(orderId)),
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Pedido não encontrado.' });
+    }
+
+    // Se não tem paymentId, não foi para o Mercado Pago ainda
+    if (!order.paymentId) {
+      return res.status(200).json({
+        orderId: order.id,
+        status: order.status,
+        paymentStatus: order.paymentStatus || 'not_initiated',
+        message: 'Pagamento não iniciado',
+      });
+    }
+
+    // Se estiver em modo teste e sem token válido
+    if (!ACCESS_TOKEN || ACCESS_TOKEN.includes('mock')) {
+      return res.status(200).json({
+        orderId: order.id,
+        status: order.status,
+        paymentStatus: order.paymentStatus || 'mock',
+        message: 'Modo de teste - status simulado',
+      });
+    }
+
+    // Consultar status atual no Mercado Pago
+    const verificationResponse = await fetch(`https://api.mercadopago.com/v1/payments/${order.paymentId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${ACCESS_TOKEN}`,
+      },
+    });
+
+    if (!verificationResponse.ok) {
+      console.error(`Erro ao consultar pagamento #${order.paymentId} no Mercado Pago`);
+      return res.status(500).json({ message: 'Erro ao consultar status no Mercado Pago' });
+    }
+
+    const paymentDetails = await verificationResponse.json() as any;
+    const mpStatus = paymentDetails.status;
+
+    // Atualizar banco se houver mudança
+    if (mpStatus !== order.paymentStatus) {
+      if (mpStatus === 'approved') {
+        await db.update(orders)
+          .set({
+            status: 'paid',
+            paymentStatus: mpStatus,
+          })
+          .where(eq(orders.id, parseInt(orderId)));
+      } else if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
+        await db.update(orders)
+          .set({
+            status: 'cancelled',
+            paymentStatus: mpStatus,
+          })
+          .where(eq(orders.id, parseInt(orderId)));
+      } else {
+        await db.update(orders)
+          .set({
+            paymentStatus: mpStatus,
+          })
+          .where(eq(orders.id, parseInt(orderId)));
+      }
+    }
+
+    return res.status(200).json({
+      orderId: order.id,
+      status: mpStatus === 'approved' ? 'paid' : order.status,
+      paymentStatus: mpStatus,
+      message: `Status do pagamento: ${mpStatus}`,
+    });
+  } catch (error: any) {
+    console.error('Erro ao verificar status do pagamento:', error);
+    return res.status(500).json({ message: 'Erro interno ao verificar status', error: error.message });
+  }
+};
