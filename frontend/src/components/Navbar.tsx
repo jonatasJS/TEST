@@ -151,16 +151,15 @@ export const Navbar: React.FC = () => {
                   style={{
                     background: 'rgba(255, 255, 255, 0.05)',
                     border: '1px solid var(--border)',
-                    padding: '0.3rem',
+                    padding: user?.profileImage ? '0' : '0.3rem',
                     borderRadius: '50%',
                     display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                 >
-                  <User size={16} />
+                  {user?.profileImage ? <img src={user.profileImage} alt={user.name} style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover', objectPosition: 'center', border: '1px solid var(--border)' }} /> : <User size={16} />}
                 </div>
-                <span style={{ maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.name.split(' ')[0]}
-                </span>
               </Link>
 
               <button

@@ -7,6 +7,7 @@ import { CartProvider } from './hooks/useCart';
 import { PushNotificationsSetup } from './components/PushNotificationsSetup';
 import { router } from './routes/router';
 import './index.css';
+import { Toaster } from 'react-hot-toast';
 
 // 1. Inicializar o cliente do TanStack Query para gerenciamento e cache de requisições
 const queryClient = new QueryClient({
@@ -28,6 +29,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <RouterProvider router={router} />
         </CartProvider>
       </AuthProvider>
+      <Toaster />
     </QueryClientProvider>
   </React.StrictMode>
 );
