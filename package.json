@@ -16,5 +16,10 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "browser-image-compression": "^2.0.2",
+    "react-easy-crop": "^5.5.7",
+    "react-hot-toast": "^2.6.0"
   }
 }

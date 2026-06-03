@@ -22,6 +22,7 @@ import adminRoutes from './routes/adminRoutes';
 import promotionRoutes from './routes/promotionRoutes';
 import clientRoutes from './routes/clientRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import cloudinary from './utils/cloudinary';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -60,6 +61,23 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/promotions', promotionRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/notifications', notificationRoutes);
+
+app.post("/upload/avatar", async (req: any, res: any) => {
+  try {
+    const result = await cloudinary.uploader.upload(req.body.image || req.body.profileImage, {
+      folder: "avatars",
+      width: 500,
+      height: 500,
+      crop: "fill"
+    });
+
+    res.json({
+      url: result.secure_url
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
 
 // Tratamento de rotas inexistentes (404)
 app.use((req, res) => {

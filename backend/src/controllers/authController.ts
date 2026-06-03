@@ -5,6 +5,7 @@ import { eq, count } from 'drizzle-orm';
 import { db } from '../db/index';
 import { users } from '../db/schema';
 import { AuthRequest } from '../middleware/auth';
+import cloudinary from '../utils/cloudinary';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'loja_vapes_cyber_glow_super_secret_jwt_key_2026';
 const COOKIE_EXPIRE = 7 * 24 * 60 * 60 * 1000; // 7 dias
@@ -183,7 +184,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     return res.status(401).json({ message: 'Não autenticado.' });
   }
 
-  const { name, email, currentPassword, newPassword, phone, address, profileImage } = req.body;
+  const { name, email, currentPassword, confirmNewPassword, newPassword, phone, address, profileImage } = req.body;
 
   try {
     // Buscar usuário atual
@@ -195,34 +196,58 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Usuário não encontrado.' });
     }
 
-    // Se quiser mudar email ou senha, verificar senha atual
-    if (email && email !== user.email || newPassword) {
+    const result = await cloudinary.uploader.upload(profileImage || user.profileImage, {
+      folder: "avatars",
+      width: 500,
+      height: 500,
+      crop: "fill"
+    });
+
+    let passwordHash = user.passwordHash;
+
+    if ((email && email !== user.email) || newPassword) {
       if (!currentPassword) {
-        return res.status(400).json({ message: 'Senha atual obrigatória para alterar email ou senha.' });
+        return res.status(400).json({
+          message: 'Senha atual obrigatória para alterar email ou senha.'
+        });
       }
 
-      const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+      const isPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.passwordHash
+      );
+
       if (!isPasswordValid) {
-        return res.status(401).json({ message: 'Senha atual incorreta.' });
+        return res.status(401).json({
+          message: 'Senha atual incorreta.'
+        });
       }
 
-      // Se quiser mudar email, verificar se já existe
       if (email && email !== user.email) {
         const existingUser = await db.query.users.findFirst({
           where: eq(users.email, email.toLowerCase().trim()),
         });
 
         if (existingUser) {
-          return res.status(400).json({ message: 'Este e-mail já está sendo utilizado.' });
+          return res.status(400).json({
+            message: 'Este e-mail já está sendo utilizado.'
+          });
         }
       }
 
-      // Se quiser mudar senha, criptografar nova senha
-      let passwordHash = user.passwordHash;
       if (newPassword) {
         if (newPassword.length < 6) {
-          return res.status(400).json({ message: 'A nova senha deve ter pelo menos 6 caracteres.' });
+          return res.status(400).json({
+            message: 'A nova senha deve ter pelo menos 6 caracteres.'
+          });
         }
+
+        if (newPassword !== confirmNewPassword) {
+          return res.status(400).json({
+            message: 'As senhas não coincidem.'
+          });
+        }
+
         const salt = await bcrypt.genSalt(10);
         passwordHash = await bcrypt.hash(newPassword, salt);
       }
@@ -236,7 +261,8 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         email: email ? email.toLowerCase().trim() : user.email,
         phone: phone || user.phone,
         address: address || user.address,
-        profileImage: profileImage || user.profileImage,
+        profileImage: result.secure_url || profileImage || user.profileImage,
+        passwordHash: passwordHash,
       })
       .where(eq(users.id, req.user.id))
       .returning({
@@ -247,6 +273,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         phone: users.phone,
         address: users.address,
         profileImage: users.profileImage,
+        // passwordHash: users.passwordHash,
         createdAt: users.createdAt,
       });
 

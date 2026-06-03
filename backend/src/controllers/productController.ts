@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { eq, and, like, or, asc, desc } from 'drizzle-orm';
 import { db } from '../db/index';
 import { products } from '../db/schema';
+import cloudinary from '../utils/cloudinary';
 
 export const getAllProducts = async (req: Request, res: Response) => {
   const { category, search, minPrice, maxPrice, sort, includeInactive } = req.query;
@@ -80,12 +81,19 @@ export const createProduct = async (req: Request, res: Response) => {
   }
 
   try {
+    const result = await cloudinary.uploader.upload(imageUrl, {
+      folder: "products",
+      width: 1000,
+      height: 1000,
+      crop: "fill"
+    });
+
     const [newProduct] = await db.insert(products).values({
       name,
       description,
       price: parseFloat(price),
       stock: parseInt(stock),
-      imageUrl,
+      imageUrl: result.secure_url || imageUrl,
       category,
       puffs: puffs ? parseInt(puffs) : null,
       nicotine: nicotine || null,
@@ -115,12 +123,19 @@ export const updateProduct = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Produto não encontrado.' });
     }
 
+    const result = await cloudinary.uploader.upload(imageUrl, {
+      folder: "products",
+      width: 1000,
+      height: 1000,
+      crop: "fill"
+    });
+
     const updatedValues: any = {};
     if (name !== undefined) updatedValues.name = name;
     if (description !== undefined) updatedValues.description = description;
     if (price !== undefined) updatedValues.price = parseFloat(price);
     if (stock !== undefined) updatedValues.stock = parseInt(stock);
-    if (imageUrl !== undefined) updatedValues.imageUrl = imageUrl;
+    if (imageUrl !== undefined) updatedValues.imageUrl = result.secure_url || imageUrl;
     if (category !== undefined) updatedValues.category = category;
     if (puffs !== undefined) updatedValues.puffs = puffs ? parseInt(puffs) : null;
     if (nicotine !== undefined) updatedValues.nicotine = nicotine || null;
