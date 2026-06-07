@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -7,9 +7,12 @@ import { apiFetch } from '../config/api';
 import { Product } from '../hooks/useCart';
 import { ClientLayout } from '../components/ClientLayout';
 import { formatCurrency } from '../utils/formatCurrency';
+import { getApplicablePromotion, calculateDiscountedPrice } from '../utils/calculateDiscount';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [progress, setProgress] = useState(100);
 
   // Buscar produtos para a vitrine
   const { data, isLoading } = useQuery({
@@ -19,11 +22,56 @@ export const Home: React.FC = () => {
 
   const featured = data?.products?.slice(0, 3) || [];
 
-  const categories = [
-    { id: 'disposable', name: 'Pods Descartáveis', desc: 'Práticos, diversos sabores e alto puffs', count: '5000+ Puffs', color: 'var(--primary)', glow: 'var(--primary-glow)', img: 'https://images.unsplash.com/photo-1527137341206-1aa2539bbff6?q=80&w=400' },
-    { id: 'pod_system', name: 'Pod Systems', desc: 'Dispositivos recarregáveis duráveis', count: 'Recarregáveis', color: 'var(--secondary)', glow: 'var(--secondary-glow)', img: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=400' },
-    { id: 'juice', name: 'Juices Premium', desc: 'Líquidos nacionais e importados freebase/nic salt', count: 'Freebase & Salt', color: 'var(--success)', glow: 'var(--success-glow)', img: 'https://images.unsplash.com/photo-1512418490979-92798cec1380?q=80&w=400' }
-  ];
+  // Buscar categorias ordenadas por vendas
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories-sorted-by-sales'],
+    queryFn: () => apiFetch<{ categories: any[] }>('/categories/sorted-by-sales'),
+  });
+
+  const categories = categoriesData?.categories?.map((cat: any) => ({
+    id: cat.slug,
+    name: cat.name,
+    desc: cat.description || '',
+    count: cat.totalSold > 0 ? `${cat.totalSold} vendidos` : 'Novo',
+    color: 'var(--primary)',
+    glow: 'var(--primary-glow)',
+    img: cat.imageUrl || 'https://images.unsplash.com/photo-1527137341206-1aa2539bbff6?q=80&w=400',
+  })) || [];
+
+  // Buscar produtos hero (ordenados por vendas)
+  const { data: heroData } = useQuery({
+    queryKey: ['hero-products'],
+    queryFn: () => apiFetch<{ products: Product[] }>('/products/hero'),
+  });
+
+  const heroProducts = heroData?.products || [];
+  const heroProduct = heroProducts[currentIndex];
+
+  // Buscar promoções ativas
+  const { data: promotionsData } = useQuery({
+    queryKey: ['active-promotions'],
+    queryFn: () => apiFetch<{ promotions: any[] }>('/promotions/active'),
+  });
+
+  const activePromotions = promotionsData?.promotions || [];
+  console.log('Promoções ativas no Home:', activePromotions);
+
+  // Timer para alternar produtos a cada 10 segundos
+  useEffect(() => {
+    if (heroProducts.length === 0) return;
+
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev <= 0) {
+          setCurrentIndex((prevIndex) => (prevIndex + 1) % heroProducts.length);
+          return 100;
+        }
+        return prev - 1;
+      });
+    }, 100); // Atualiza a cada 100ms para animação suave
+
+    return () => clearInterval(interval);
+  }, [heroProducts.length]);
 
   return (
     <ClientLayout>
@@ -77,8 +125,12 @@ export const Home: React.FC = () => {
             style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}
           >
             <motion.div
-              animate={{ y: [0, -15, 0] }}
-              transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+              key={heroProduct?.id}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0, y: [0, -15, 0] }}
+              exit={{ opacity: 0, x: -50 }}
+              transition={{ duration: 0.5, y: { repeat: Infinity, duration: 4, ease: 'easeInOut' } }}
+              onClick={() => heroProduct && navigate({ to: '/products/$id', params: { id: String(heroProduct.id) } })}
               style={{
                 position: 'relative',
                 width: '320px',
@@ -91,19 +143,40 @@ export const Home: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
+                cursor: 'pointer',
               }}
             >
               {/* Moldura / Pod Ilustrativo */}
               <div style={{ textAlign: 'center', zIndex: 1 }}>
-                <span style={{ fontSize: '7rem', filter: 'drop-shadow(0 0 20px rgba(168,85,247,0.6))' }}>💨</span>
-                <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '1.5rem', color: '#fff', marginTop: '1rem', textShadow: '0 0 10px rgba(255,255,255,0.5)' }}>IGNITE V50</h3>
-                <span className="badge badge-success" style={{ marginTop: '0.5rem', boxShadow: '0 0 10px var(--success-glow)' }}>Watermelon Ice</span>
+                <img
+                  src={heroProduct?.imageUrl || 'https://images.unsplash.com/photo-1527137341206-1aa2539bbff6?q=80&w=400'}
+                  alt={heroProduct?.name || 'Produto'}
+                  style={{
+                    width: '200px',
+                    height: '200px',
+                    objectFit: 'cover',
+                    borderRadius: '12px',
+                    filter: 'drop-shadow(0 0 20px rgba(168,85,247,0.6))',
+                  }}
+                />
+                <h3 style={{ fontFamily: 'var(--font-title)', fontSize: '1.5rem', color: '#fff', marginTop: '1rem', textShadow: '0 0 10px rgba(255,255,255,0.5)' }}>{heroProduct?.name || 'Carregando...'}</h3>
+                <span className="badge badge-success" style={{ marginTop: '0.5rem', boxShadow: '0 0 10px var(--success-glow)' }}>{heroProduct?.flavor || 'Sabor Premium'}</span>
               </div>
 
               {/* Detalhes de grade cibernética no card */}
               <div style={{ position: 'absolute', bottom: '1.5rem', left: '1.5rem', right: '1.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                <span>PUFFS: 5000</span>
-                <span>NIC: 5%</span>
+                {heroProduct?.puffs && <span>PUFFS: {heroProduct.puffs}</span>}
+                {heroProduct?.nicotine && <span>NIC: {heroProduct.nicotine}</span>}
+              </div>
+
+              {/* Progress Bar */}
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.1)' }}>
+                <motion.div
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 0.1 }}
+                  style={{ height: '100%', background: 'linear-gradient(90deg, var(--primary), var(--secondary))' }}
+                />
               </div>
             </motion.div>
           </motion.div>
@@ -257,7 +330,7 @@ export const Home: React.FC = () => {
                       border: '1px solid rgba(168, 85, 247, 0.3)',
                     }}
                   >
-                    {product.category === 'disposable' ? 'Descartável' : product.category === 'juice' ? 'Juice' : 'Pod System'}
+                    {product.category?.slug === 'disposable' ? 'Descartável' : product.category?.slug === 'juice' ? 'Juice' : 'Pod System'}
                   </span>
 
                   {/* Imagem do Produto */}
@@ -296,9 +369,30 @@ export const Home: React.FC = () => {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem' }}>
                       <div>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Preço</span>
-                        <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 10px var(--secondary-glow)' }}>
-                          {formatCurrency(product.price)}
-                        </span>
+                        {(() => {
+                          const promotion = getApplicablePromotion(product, activePromotions);
+                          console.log(`Produto #${product.id} (${product.name}): Categoria=${product.categoryId}, Promoção=${promotion ? promotion.name : 'Nenhuma'}`);
+                          
+                          if (promotion) {
+                            const discountedPrice = calculateDiscountedPrice(product.price, promotion);
+                            console.log(`  Preço original: ${product.price}, Desconto aplicado: ${promotion.type} - ${promotion.value}%, Preço final: ${discountedPrice}`);
+                            return (
+                              <div>
+                                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', textDecoration: 'line-through', marginRight: '0.5rem' }}>
+                                  {formatCurrency(product.price)}
+                                </span>
+                                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)', textShadow: '0 0 10px var(--success-glow)' }}>
+                                  {formatCurrency(discountedPrice)}
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 10px var(--secondary-glow)' }}>
+                              {formatCurrency(product.price)}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <Link
                         to={`/products/$id`}

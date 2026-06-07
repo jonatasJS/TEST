@@ -16,6 +16,7 @@ import cookieParser from 'cookie-parser';
 // Importando rotas
 import authRoutes from './routes/authRoutes';
 import productRoutes from './routes/productRoutes';
+import categoryRoutes from './routes/categoryRoutes';
 import orderRoutes from './routes/orderRoutes';
 import checkoutRoutes from './routes/checkoutRoutes';
 import adminRoutes from './routes/adminRoutes';
@@ -55,6 +56,7 @@ app.get('/', (req, res) => {
 // Registrar rotas sob o endpoint /api
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/checkout', checkoutRoutes);
 app.use('/api/admin', adminRoutes);

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, Calendar, Percent, DollarSign, Tag, Check, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminLayout } from '../components/AdminLayout';
@@ -44,8 +45,8 @@ export const AdminPromotions: React.FC = () => {
   const [endDate, setEndDate] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [usageLimit, setUsageLimit] = useState('');
-  const [applicableCategories, setApplicableCategories] = useState('');
-  const [applicableProducts, setApplicableProducts] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
 
   // Bloqueio de Rota Admin
   React.useEffect(() => {
@@ -62,6 +63,22 @@ export const AdminPromotions: React.FC = () => {
 
   const allPromotions = data?.promotions || [];
 
+  // Buscar categorias
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => apiFetch<{ categories: any[] }>('/categories'),
+  });
+
+  const allCategories = categoriesData?.categories || [];
+
+  // Buscar produtos
+  const { data: productsData } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => apiFetch<{ products: any[] }>('/products'),
+  });
+
+  const allProducts = productsData?.products || [];
+
   // Mutação para Criar/Editar Promoção
   const mutation = useMutation({
     mutationFn: (variables: { id?: number; body: any }) => {
@@ -77,7 +94,7 @@ export const AdminPromotions: React.FC = () => {
       closeModal();
     },
     onError: (err: any) => {
-      alert(err.message || 'Falha ao salvar promoção.');
+      toast.error(err.message || 'Falha ao salvar promoção.');
     },
   });
 
@@ -92,7 +109,7 @@ export const AdminPromotions: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-promotions'] });
     },
     onError: (err: any) => {
-      alert(err.message || 'Falha ao deletar promoção.');
+      toast.error(err.message || 'Falha ao deletar promoção.');
     },
   });
 
@@ -121,8 +138,8 @@ export const AdminPromotions: React.FC = () => {
     setEndDate('');
     setIsActive(true);
     setUsageLimit('');
-    setApplicableCategories('');
-    setApplicableProducts('');
+    setSelectedCategories([]);
+    setSelectedProducts([]);
     setIsModalOpen(true);
   };
 
@@ -138,8 +155,8 @@ export const AdminPromotions: React.FC = () => {
     setEndDate(new Date(promo.endDate).toISOString().split('T')[0]);
     setIsActive(promo.isActive);
     setUsageLimit(promo.usageLimit ? String(promo.usageLimit) : '');
-    setApplicableCategories(promo.applicableCategories || '');
-    setApplicableProducts(promo.applicableProducts || '');
+    setSelectedCategories(promo.applicableCategories ? JSON.parse(promo.applicableCategories) : []);
+    setSelectedProducts(promo.applicableProducts ? JSON.parse(promo.applicableProducts) : []);
     setIsModalOpen(true);
   };
 
@@ -151,7 +168,7 @@ export const AdminPromotions: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !type || !value || !startDate || !endDate) {
-      alert('Preencha todos os campos obrigatórios.');
+      toast.error('Preencha todos os campos obrigatórios.');
       return;
     }
 
@@ -166,8 +183,8 @@ export const AdminPromotions: React.FC = () => {
       endDate,
       isActive,
       usageLimit: usageLimit ? parseInt(usageLimit) : null,
-      applicableCategories: applicableCategories ? applicableCategories.split(',').map(s => s.trim()) : null,
-      applicableProducts: applicableProducts ? applicableProducts.split(',').map(s => s.trim()) : null,
+      applicableCategories: selectedCategories.length > 0 ? selectedCategories : null,
+      applicableProducts: selectedProducts.length > 0 ? selectedProducts : null,
     };
 
     mutation.mutate({
@@ -265,12 +282,12 @@ export const AdminPromotions: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>
                   {promo.type === 'percentage' ? (
                     <>
-                      <Percent size={24} />
+                      {/* <Percent size={24} /> */}
                       <span>{promo.value}% OFF</span>
                     </>
                   ) : promo.type === 'fixed_amount' ? (
                     <>
-                      <DollarSign size={24} />
+                      {/* <DollarSign size={24} /> */}
                       <span>{formatCurrency(promo.value)} OFF</span>
                     </>
                   ) : (
@@ -405,13 +422,55 @@ export const AdminPromotions: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Categorias Aplicáveis (separadas por vírgula)</label>
-                  <input type="text" className="input-field" placeholder="disposable, juice, pod_system" value={applicableCategories} onChange={(e) => setApplicableCategories(e.target.value)} />
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Categorias Aplicáveis</label>
+                  <div style={{ maxHeight: '120px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem', background: 'rgba(255,255,255,0.02)' }}>
+                    {allCategories.map((cat: any) => (
+                      <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0' }}>
+                        <input
+                          type="checkbox"
+                          id={`cat-${cat.id}`}
+                          checked={selectedCategories.includes(cat.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCategories([...selectedCategories, cat.id]);
+                            } else {
+                              setSelectedCategories(selectedCategories.filter(id => id !== cat.id));
+                            }
+                          }}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                        <label htmlFor={`cat-${cat.id}`} style={{ fontSize: '0.85rem', color: '#fff', cursor: 'pointer' }}>
+                          {cat.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>IDs de Produtos Aplicáveis (separados por vírgula)</label>
-                  <input type="text" className="input-field" placeholder="1, 2, 3" value={applicableProducts} onChange={(e) => setApplicableProducts(e.target.value)} />
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Produtos Aplicáveis</label>
+                  <div style={{ maxHeight: '120px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem', background: 'rgba(255,255,255,0.02)' }}>
+                    {allProducts.map((prod: any) => (
+                      <div key={prod.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0' }}>
+                        <input
+                          type="checkbox"
+                          id={`prod-${prod.id}`}
+                          checked={selectedProducts.includes(prod.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedProducts([...selectedProducts, prod.id]);
+                            } else {
+                              setSelectedProducts(selectedProducts.filter(id => id !== prod.id));
+                            }
+                          }}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                        <label htmlFor={`prod-${prod.id}`} style={{ fontSize: '0.85rem', color: '#fff', cursor: 'pointer' }}>
+                          {prod.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <button type="submit" disabled={mutation.isPending} className="btn btn-primary" style={{ width: '100%', padding: '0.8rem', marginTop: '1rem', gap: '0.5rem' }}>

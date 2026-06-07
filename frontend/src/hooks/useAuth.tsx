@@ -8,6 +8,13 @@ export interface User {
   role: 'admin' | 'client';
   phone?: string;
   address?: string;
+  cep?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
   profileImage?: string;
   createdAt: string;
 }

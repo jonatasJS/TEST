@@ -9,7 +9,14 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: varchar('role', { length: 50 }).default('client').notNull(), // 'admin' ou 'client'
   phone: varchar('phone', { length: 50 }),
-  address: text('address'),
+  address: text('address'), // Mantido para compatibilidade
+  cep: varchar('cep', { length: 20 }),
+  street: varchar('street', { length: 255 }),
+  number: varchar('number', { length: 50 }),
+  complement: varchar('complement', { length: 255 }),
+  neighborhood: varchar('neighborhood', { length: 255 }),
+  city: varchar('city', { length: 255 }),
+  state: varchar('state', { length: 50 }),
   profileImage: text('profile_image'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -22,10 +29,22 @@ export const products = pgTable('products', {
   price: doublePrecision('price').notNull(),
   stock: integer('stock').notNull(),
   imageUrl: text('image_url').notNull(),
-  category: varchar('category', { length: 100 }).notNull(), // e.g., 'disposable', 'juice', 'pod_system', 'accessories'
+  categoryId: integer('category_id').references(() => categories.id, { onDelete: 'restrict' }).notNull(),
   puffs: integer('puffs'), // Opcional (apenas para pod descartável)
   nicotine: varchar('nicotine', { length: 50 }), // Opcional (ex: "5%", "50mg")
   flavor: varchar('flavor', { length: 150 }), // Opcional (ex: "Watermelon Ice", "Blue Razz")
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+
+// Tabela de categorias
+export const categories = pgTable('categories', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  slug: varchar('slug', { length: 255 }).unique().notNull(),
+  imageUrl: text('image_url'),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -81,7 +100,11 @@ export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one })
   }),
 }));
 
-export const productsRelations = relations(products, ({ many }) => ({
+export const productsRelations = relations(products, ({ one, many }) => ({
+  category: one(categories, {
+    fields: [products.categoryId],
+    references: [categories.id],
+  }),
   orderItems: many(orderItems),
 }));
 
@@ -121,4 +144,8 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
     fields: [orderItems.productId],
     references: [products.id],
   }),
+}));
+
+export const categoriesRelations = relations(categories, ({ many }) => ({
+  products: many(products),
 }));

@@ -54,7 +54,7 @@ export const Navbar: React.FC = () => {
         </Link>
 
         {/* Links Centrais */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+        {/* <nav style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
           <Link
             to="/products"
             className="text-muted"
@@ -70,7 +70,7 @@ export const Navbar: React.FC = () => {
             <Compass size={18} />
             Catálogo
           </Link>
-        </nav>
+        </nav> */}
 
         {/* Ações Direitas */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>

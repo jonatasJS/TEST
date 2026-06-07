@@ -1,11 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
-import { ShoppingBag, ArrowLeft, Trash2, CreditCard, Lock, QrCode, X, RefreshCw, Truck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ShoppingBag, ArrowLeft, Trash2, CreditCard, Lock, QrCode, X, RefreshCw, Truck, Search, AlertCircle, CheckCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch } from '../config/api';
 import { ClientLayout } from '../components/ClientLayout';
 import { formatCurrency } from '../utils/formatCurrency';
+import { getApplicablePromotion, calculateDiscountedPrice } from '../utils/calculateDiscount';
+import { fetchAddressByCep, formatCep } from '../services/viaCep';
 
 type PaymentType = 'pix' | 'on_delivery';
 type DeliveryCardType = 'credit' | 'debit';
@@ -19,14 +23,23 @@ type PixPaymentData = {
 };
 
 export const CartPage: React.FC = () => {
-  const { cart, cartTotal, updateQuantity, removeFromCart, clearCart } = useCart();
+  const { cart, updateQuantity, removeFromCart, clearCart } = useCart();
   const { user, isAuthenticated } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  const [cep, setCep] = useState('');
+  const [street, setStreet] = useState('');
+  const [number, setNumber] = useState('');
+  const [complement, setComplement] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState<string | null>(null);
+  const [cepSuccess, setCepSuccess] = useState(false);
   const [paymentType, setPaymentType] = useState<PaymentType>('pix');
   const [deliveryCardType, setDeliveryCardType] = useState<DeliveryCardType>('credit');
   const [showPixModal, setShowPixModal] = useState(false);
@@ -39,8 +52,99 @@ export const CartPage: React.FC = () => {
     if (user) {
       setName(user.name);
       setEmail(user.email);
+      setPhone(user.phone || '');
+      setCep(user.cep || '');
+      setStreet(user.street || '');
+      setNumber(user.number || '');
+      setComplement(user.complement || '');
+      setNeighborhood(user.neighborhood || '');
+      setCity(user.city || '');
+      setState(user.state || '');
     }
   }, [user]);
+
+  // Debounce hook para CEP
+  const useDebounce = (value: string, delay: number) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+      const handler = setTimeout(() => {
+        setDebouncedValue(value);
+      }, delay);
+
+      return () => {
+        clearTimeout(handler);
+      };
+    }, [value, delay]);
+
+    return debouncedValue;
+  };
+
+  const debouncedCep = useDebounce(cep, 500);
+
+  // Buscar endereço pelo CEP
+  useEffect(() => {
+    const fetchAddress = async () => {
+      const cleanCep = debouncedCep.replace(/\D/g, '');
+
+      if (cleanCep.length === 8) {
+        setCepLoading(true);
+        setCepError(null);
+        setCepSuccess(false);
+
+        try {
+          const address = await fetchAddressByCep(cleanCep);
+
+          if (address) {
+            setStreet(address.street);
+            setNeighborhood(address.neighborhood);
+            setCity(address.city);
+            setState(address.state);
+            setCepSuccess(true);
+            setCepError(null);
+          } else {
+            setCepError('CEP não encontrado');
+            setCepSuccess(false);
+          }
+        } catch (error) {
+          setCepError('Erro ao buscar CEP. Tente novamente.');
+          setCepSuccess(false);
+        } finally {
+          setCepLoading(false);
+        }
+      } else if (cleanCep.length > 0 && cleanCep.length < 8) {
+        // CEP incompleto, limpar erro e sucesso
+        setCepError(null);
+        setCepSuccess(false);
+      }
+    };
+
+    fetchAddress();
+  }, [debouncedCep]);
+
+  // Formatar CEP enquanto digita
+  const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '');
+    setCep(formatCep(value));
+  };
+
+  // Buscar promoções ativas
+  const { data: promotionsData } = useQuery({
+    queryKey: ['active-promotions'],
+    queryFn: () => apiFetch<{ promotions: any[] }>('/promotions/active'),
+  });
+
+  const activePromotions = promotionsData?.promotions || [];
+
+  // Calculate discounted total
+  const discountedTotal = cart.reduce((total, item) => {
+    const promotion = getApplicablePromotion(item.product, activePromotions);
+    if (promotion) {
+      const discountedPrice = calculateDiscountedPrice(item.product.price, promotion);
+      return total + (discountedPrice * item.quantity);
+    }
+    return total + (item.product.price * item.quantity);
+  }, 0);
 
   const completeOrderSuccess = useCallback(
     (orderId: number, mode: 'pix' | 'delivery') => {
@@ -59,13 +163,13 @@ export const CartPage: React.FC = () => {
     e.preventDefault();
     if (cart.length === 0) return;
 
-    if (!name || !email || !phone || !address) {
-      alert('Por favor, preencha todos os dados de contato e entrega.');
+    if (!name || !email || !phone || !cep || !street || !number || !neighborhood || !city || !state) {
+      toast.error('Por favor, preencha todos os dados de contato e entrega.');
       return;
     }
 
     if (paymentType === 'on_delivery' && !deliveryCardType) {
-      alert('Selecione se o pagamento na entrega será no crédito ou no débito.');
+      toast.error('Selecione se o pagamento na entrega será no crédito ou no débito.');
       return;
     }
 
@@ -81,7 +185,7 @@ export const CartPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({
           items: orderItemsData,
-          shippingAddress: address,
+          shippingAddress: `${street}, ${number}${complement ? `, ${complement}` : ''} - ${neighborhood} - ${city}/${state} - CEP: ${cep}`,
           contactPhone: phone,
           customerName: name,
           customerEmail: email,
@@ -107,8 +211,19 @@ export const CartPage: React.FC = () => {
       setShowPixModal(true);
     } catch (err: unknown) {
       console.error('Erro ao finalizar pedido:', err);
-      const message = err instanceof Error ? err.message : 'Falha ao processar checkout. Tente novamente.';
-      alert(message);
+      const error = err as any;
+      let message = 'Falha ao processar checkout. Tente novamente.';
+      
+      if (error.message) {
+        message = error.message;
+      }
+      
+      // Se houver contato de suporte na resposta, inclua na mensagem
+      if (error.supportContact) {
+        message += ` Entre em contato com o suporte: ${error.supportContact}`;
+      }
+
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -134,7 +249,7 @@ export const CartPage: React.FC = () => {
       completeOrderSuccess(currentOrderId, 'pix');
     } catch (error) {
       console.error('Erro ao simular pagamento:', error);
-      alert('Não foi possível simular o pagamento.');
+      toast.error('Não foi possível simular o pagamento.');
     }
   };
 
@@ -248,7 +363,23 @@ export const CartPage: React.FC = () => {
                       </div>
 
                       <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--secondary)', width: '80px', textAlign: 'right' }}>
-                        {formatCurrency(item.product.price * item.quantity)}
+                        {(() => {
+                          const promotion = getApplicablePromotion(item.product, activePromotions);
+                          if (promotion) {
+                            const discountedPrice = calculateDiscountedPrice(item.product.price, promotion);
+                            return (
+                              <div>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textDecoration: 'line-through', display: 'block' }}>
+                                  {formatCurrency(item.product.price * item.quantity)}
+                                </span>
+                                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--success)' }}>
+                                  {formatCurrency(discountedPrice * item.quantity)}
+                                </span>
+                              </div>
+                            );
+                          }
+                          return formatCurrency(item.product.price * item.quantity);
+                        })()}
                       </span>
 
                       <button
@@ -287,17 +418,78 @@ export const CartPage: React.FC = () => {
                   <input type="email" className="input-field" required value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Endereço Completo de Entrega</label>
-                  <textarea
-                    placeholder="Rua, Número, Bairro, Cidade, Estado e CEP"
-                    className="input-field"
-                    required
-                    rows={3}
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    style={{ resize: 'none', fontFamily: 'var(--font-body)' }}
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>CEP</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        placeholder="00000-000"
+                        className="input-field"
+                        required
+                        value={cep}
+                        onChange={handleCepChange}
+                        style={{
+                          paddingRight: cepLoading || cepError || cepSuccess ? '2.5rem' : '0.75rem',
+                          borderColor: cepError ? 'var(--error)' : cepSuccess ? 'var(--success)' : 'var(--border)',
+                        }}
+                      />
+                      {cepLoading && (
+                        <div style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)' }}>
+                          <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                        </div>
+                      )}
+                      {cepError && !cepLoading && (
+                        <div style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--error)' }}>
+                          <AlertCircle size={16} />
+                        </div>
+                      )}
+                      {cepSuccess && !cepLoading && (
+                        <div style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--success)' }}>
+                          <CheckCircle size={16} />
+                        </div>
+                      )}
+                    </div>
+                    {cepError && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--error)', marginTop: '0.2rem' }}>
+                        {cepError}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rua</label>
+                    <input type="text" placeholder="Nome da rua" className="input-field" required value={street} onChange={(e) => setStreet(e.target.value)} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Número</label>
+                    <input type="text" placeholder="123" className="input-field" required value={number} onChange={(e) => setNumber(e.target.value)} />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Complemento</label>
+                    <input type="text" placeholder="Apto, Bloco, etc. (opcional)" className="input-field" value={complement} onChange={(e) => setComplement(e.target.value)} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Bairro</label>
+                    <input type="text" placeholder="Bairro" className="input-field" required value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Cidade</label>
+                    <input type="text" placeholder="Cidade" className="input-field" required value={city} onChange={(e) => setCity(e.target.value)} />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Estado</label>
+                    <input type="text" placeholder="SP" className="input-field" required value={state} onChange={(e) => setState(e.target.value)} />
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -455,7 +647,7 @@ export const CartPage: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
                   <span>Subtotal:</span>
-                  <span>{formatCurrency(cartTotal)}</span>
+                  <span>{formatCurrency(discountedTotal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
                   <span>Envio Express:</span>
@@ -466,7 +658,7 @@ export const CartPage: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
                 <span style={{ fontWeight: 600, fontSize: '1rem' }}>Total Geral:</span>
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 12px var(--secondary-glow)' }}>
-                  {formatCurrency(cartTotal)}
+                  {formatCurrency(discountedTotal)}
                 </span>
               </div>
 
@@ -509,7 +701,7 @@ export const CartPage: React.FC = () => {
               type="button"
               onClick={() => {
                 setShowPixModal(false);
-                alert('O pedido foi criado. Você pode concluir o PIX pelo painel ou tentar novamente.');
+                toast.success('O pedido foi criado. Você pode concluir o PIX pelo painel ou tentar novamente.');
               }}
               style={{
                 position: 'absolute',
@@ -581,7 +773,7 @@ export const CartPage: React.FC = () => {
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(pixData.qr_code || '');
-                    alert('Código copiado!');
+                    toast.success('Código copiado!');
                   }}
                   style={{
                     padding: '0.75rem 1rem',

@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit, ToggleLeft, ToggleRight, Search, X, Check } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
-import { Product } from '../hooks/useCart';
+import { Product, Category } from '../hooks/useCart';
 import { AdminLayout } from '../components/AdminLayout';
 import { formatCurrency } from '../utils/formatCurrency';
 
@@ -23,7 +24,7 @@ export const AdminProducts: React.FC = () => {
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [category, setCategory] = useState('disposable');
+  const [categoryId, setCategoryId] = useState<number | ''>('');
   const [puffs, setPuffs] = useState('');
   const [nicotine, setNicotine] = useState('');
   const [flavor, setFlavor] = useState('');
@@ -44,6 +45,14 @@ export const AdminProducts: React.FC = () => {
 
   const allProducts = data?.products || [];
 
+  // Buscar categorias ativas para seleção
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => apiFetch<{ categories: Category[] }>('/categories'),
+  });
+
+  const categories = categoriesData?.categories || [];
+
   // Mutações: Criar/Editar Produto
   const mutation = useMutation({
     mutationFn: (variables: { id?: number; body: any }) => {
@@ -60,7 +69,7 @@ export const AdminProducts: React.FC = () => {
       closeModal();
     },
     onError: (err: any) => {
-      alert(err.message || 'Falha ao salvar produto.');
+      toast.error(err.message || 'Falha ao salvar produto.');
     },
   });
 
@@ -85,7 +94,7 @@ export const AdminProducts: React.FC = () => {
     setPrice('');
     setStock('');
     setImageUrl('');
-    setCategory('disposable');
+    setCategoryId('');
     setPuffs('');
     setNicotine('');
     setFlavor('');
@@ -100,7 +109,7 @@ export const AdminProducts: React.FC = () => {
     setPrice(String(prod.price));
     setStock(String(prod.stock));
     setImageUrl(prod.imageUrl);
-    setCategory(prod.category);
+    setCategoryId(prod.categoryId || '');
     setPuffs(prod.puffs ? String(prod.puffs) : '');
     setNicotine(prod.nicotine || '');
     setFlavor(prod.flavor || '');
@@ -115,8 +124,8 @@ export const AdminProducts: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !description || !price || !stock || !imageUrl || !category) {
-      alert('Preencha todos os campos obrigatórios.');
+    if (!name || !description || !price || !stock || !imageUrl || !categoryId) {
+      toast.error('Preencha todos os campos obrigatórios.');
       return;
     }
 
@@ -126,7 +135,7 @@ export const AdminProducts: React.FC = () => {
       price: parseFloat(price),
       stock: parseInt(stock),
       imageUrl,
-      category,
+      categoryId,
       puffs: puffs ? parseInt(puffs) : null,
       nicotine: nicotine || null,
       flavor: flavor || null,
@@ -206,7 +215,7 @@ export const AdminProducts: React.FC = () => {
                   </td>
                   <td style={{ padding: '0.8rem 0.5rem', fontWeight: 600, color: '#fff' }}>{prod.name}</td>
                   <td style={{ padding: '0.8rem 0.5rem', textTransform: 'capitalize' }}>
-                    {prod.category === 'disposable' ? 'Descartável' : prod.category === 'juice' ? 'Juice' : 'Pod System'}
+                    {prod.category?.name || 'Sem categoria'}
                   </td>
                   <td style={{ padding: '0.8rem 0.5rem', color: 'var(--primary)', fontWeight: 500 }}>{prod.flavor || '-'}</td>
                   <td style={{ padding: '0.8rem 0.5rem' }}>
@@ -267,10 +276,18 @@ export const AdminProducts: React.FC = () => {
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                     <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Categoria *</label>
-                    <select className="input-field" value={category} onChange={(e) => setCategory(e.target.value)}>
-                      <option value="disposable">Descartável (Puffs)</option>
-                      <option value="pod_system">Pod System Recarregável</option>
-                      <option value="juice">Juice Líquido</option>
+                    <select 
+                      className="input-field" 
+                      value={categoryId} 
+                      onChange={(e) => setCategoryId(parseInt(e.target.value))}
+                      required
+                    >
+                      <option value="">Selecione uma categoria</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { getAllProducts, getProductById, createProduct, updateProduct, deleteProduct } from '../controllers/productController';
+import { getAllProducts, getProductById, createProduct, updateProduct, deleteProduct, getHeroProduct } from '../controllers/productController';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
 const router = Router();
 
 router.get('/', getAllProducts);
+router.get('/hero', getHeroProduct);
 router.get('/:id', getProductById);
 
 // Rotas administrativas protegidas

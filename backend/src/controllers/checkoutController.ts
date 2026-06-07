@@ -38,7 +38,21 @@ export const createCheckoutPreference = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pedido não encontrado.' });
     }
 
-    // 2. Formatar os itens do Mercado Pago
+    // 2. Validar valor total do pedido (segurança)
+    const calculatedTotal = order.items.reduce((sum, item) => {
+      return sum + (item.priceAtPurchase * item.quantity);
+    }, 0);
+
+    if (Math.abs(calculatedTotal - order.totalAmount) > 0.01) {
+      console.error(`Inconsistência de valor no pedido #${order.id}: DB=${order.totalAmount}, Calculado=${calculatedTotal}`);
+      return res.status(400).json({ 
+        message: 'Inconsistência no valor do pedido. Entre em contato com o suporte.',
+        error: 'VALUE_MISMATCH',
+        supportContact: 'suporte@cybervapes.com'
+      });
+    }
+
+    // 3. Formatar os itens do Mercado Pago (cada item separado com valor unitário)
     const mpItems = order.items.map((item) => {
       const productName = item.product?.name || `Produto #${item.productId}`;
       return {
@@ -49,7 +63,7 @@ export const createCheckoutPreference = async (req: Request, res: Response) => {
       };
     });
 
-    // 3. Montar a requisição de preferência
+    // 4. Montar a requisição de preferência
     const preferenceBody = {
       items: mpItems,
       payment_methods: {
@@ -92,7 +106,7 @@ export const createCheckoutPreference = async (req: Request, res: Response) => {
     if (!mpResponse.ok) {
       const errorData = await mpResponse.json();
       console.error('Erro na resposta do Mercado Pago:', errorData);
-      throw new Error(`Falha ao registrar preferência de pagamento. Status: ${mpResponse.status}, Erro: ${JSON.stringify(errorData)}`);
+      throw new Error(`Falha ao registrar preferência de pagamento. Entre em contato com o suporte: suporte@cybervapes.com`);
     }
 
     const mpData = await mpResponse.json() as any;
@@ -136,7 +150,21 @@ export const createPixPayment = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Pedido não encontrado.' });
     }
 
-    // 2. Criar pagamento PIX
+    // 2. Validar valor total do pedido (segurança)
+    const calculatedTotal = order.items.reduce((sum, item) => {
+      return sum + (item.priceAtPurchase * item.quantity);
+    }, 0);
+
+    if (Math.abs(calculatedTotal - order.totalAmount) > 0.01) {
+      console.error(`Inconsistência de valor no pedido #${order.id}: DB=${order.totalAmount}, Calculado=${calculatedTotal}`);
+      return res.status(400).json({ 
+        message: 'Inconsistência no valor do pedido. Entre em contato com o suporte.',
+        error: 'VALUE_MISMATCH',
+        supportContact: 'suporte@cybervapes.com'
+      });
+    }
+
+    // 3. Criar pagamento PIX
     const paymentBody = {
       transaction_amount: order.totalAmount,
       description: `Pedido #${order.id} - CYBERVAPES`,
@@ -181,7 +209,7 @@ export const createPixPayment = async (req: Request, res: Response) => {
     if (!mpResponse.ok) {
       const errorData = await mpResponse.json();
       console.error('Erro na resposta do Mercado Pago PIX:', errorData);
-      throw new Error(`Falha ao criar pagamento PIX. Status: ${mpResponse.status}, Erro: ${JSON.stringify(errorData)}`);
+      throw new Error(`Falha ao criar pagamento PIX. Entre em contato com o suporte: suporte@cybervapes.com`);
     }
 
     const mpData = await mpResponse.json() as any;

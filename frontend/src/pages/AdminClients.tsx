@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Mail, Calendar, ShoppingBag, DollarSign, Shield, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminLayout } from '../components/AdminLayout';
@@ -78,7 +79,7 @@ export const AdminClients: React.FC = () => {
       setClientDetails(null);
     },
     onError: (err: any) => {
-      alert(err.message || 'Falha ao deletar cliente.');
+      toast.error(err.message || 'Falha ao deletar cliente.');
     },
   });
 
@@ -94,7 +95,7 @@ export const AdminClients: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
     },
     onError: (err: any) => {
-      alert(err.message || 'Falha ao alterar role do cliente.');
+      toast.error(err.message || 'Falha ao alterar role do cliente.');
     },
   });
 

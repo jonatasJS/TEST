@@ -19,14 +19,18 @@ export const getAllPromotions = async (req: AuthRequest, res: Response) => {
 export const getActivePromotions = async (req: AuthRequest, res: Response) => {
   try {
     const now = new Date();
-    const activePromotions = await db.query.promotions.findMany({
-      where: and(
-        eq(promotions.isActive, true),
-        sql`${promotions.startDate} <= ${now}`,
-        sql`${promotions.endDate} >= ${now}`
-      ),
+    const allPromotions = await db.query.promotions.findMany({
+      where: eq(promotions.isActive, true),
       orderBy: [desc(promotions.createdAt)],
     });
+    
+    // Filter by date range using JavaScript
+    const activePromotions = allPromotions.filter(promo => {
+      const startDate = new Date(promo.startDate);
+      const endDate = new Date(promo.endDate);
+      return now >= startDate && now <= endDate;
+    });
+    
     return res.status(200).json({ promotions: activePromotions });
   } catch (error: any) {
     console.error('Erro ao buscar promoções ativas:', error);

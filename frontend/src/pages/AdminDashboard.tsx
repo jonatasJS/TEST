@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, ShoppingCart, Users, AlertTriangle, ArrowUpRight, Plus, FileSpreadsheet, Menu, TrendingUp, Package, Clock, CheckCircle, XCircle, Calendar, Activity, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminSidebar } from '../components/AdminSidebar';
@@ -62,7 +63,7 @@ export const AdminDashboard: React.FC = () => {
   // Redirecionamento de Segurança de Rota se não for Admin
   React.useEffect(() => {
     if (!authLoading && !isAdmin) {
-      alert('Acesso restrito apenas a administradores.');
+      toast.error('Acesso restrito apenas a administradores.');
       navigate({ to: '/login' });
     }
   }, [isAdmin, authLoading]);
@@ -119,7 +120,7 @@ export const AdminDashboard: React.FC = () => {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Erro ao exportar:', error);
-      alert('Erro ao exportar arquivo');
+      toast.error('Erro ao exportar arquivo');
     }
   };
 

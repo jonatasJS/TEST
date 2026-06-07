@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { useParams, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ShoppingBag, ArrowLeft, Plus, Minus, Star, Flame, Shield } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiFetch } from '../config/api';
 import { useCart, Product } from '../hooks/useCart';
 import { ClientLayout } from '../components/ClientLayout';
 import { formatCurrency } from '../utils/formatCurrency';
+import { getApplicablePromotion, calculateDiscountedPrice } from '../utils/calculateDiscount';
 
 export const ProductDetails: React.FC = () => {
   const { id } = useParams({ from: '/products/$id' }) as any;
@@ -19,6 +21,14 @@ export const ProductDetails: React.FC = () => {
   });
 
   const product = data?.product;
+
+  // Buscar promoções ativas
+  const { data: promotionsData } = useQuery({
+    queryKey: ['active-promotions'],
+    queryFn: () => apiFetch<{ promotions: any[] }>('/promotions/active'),
+  });
+
+  const activePromotions = promotionsData?.promotions || [];
 
   if (isLoading) {
     return (
@@ -57,7 +67,7 @@ export const ProductDetails: React.FC = () => {
   const handleQtyChange = (type: 'inc' | 'dec') => {
     if (type === 'inc') {
       if (qty >= product.stock) {
-        alert(`Desculpe! O estoque máximo para este produto é ${product.stock} unidades.`);
+        toast.error(`Desculpe! O estoque máximo para este produto é ${product.stock} unidades.`);
       } else {
         setQty((prev) => prev + 1);
       }
@@ -141,7 +151,7 @@ export const ProductDetails: React.FC = () => {
             {/* Header Detalhes */}
             <div>
               <span className="badge badge-paid" style={{ marginBottom: '0.8rem' }}>
-                {product.category === 'disposable' ? 'Descartável' : product.category === 'juice' ? 'Juice Premium' : 'Pod System'}
+                {product.category?.name || 'Sem categoria'}
               </span>
               
               <h1 style={{ fontSize: '2.5rem', fontFamily: 'var(--font-title)', fontWeight: 800, lineHeight: '1.1', marginBottom: '0.8rem' }}>
@@ -174,9 +184,27 @@ export const ProductDetails: React.FC = () => {
             >
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-dark)', textTransform: 'uppercase', fontWeight: 600 }}>Preço Especial</span>
-                <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 15px var(--secondary-glow)' }}>
-                  {formatCurrency(product.price)}
-                </h2>
+                {(() => {
+                  const promotion = getApplicablePromotion(product, activePromotions);
+                  if (promotion) {
+                    const discountedPrice = calculateDiscountedPrice(product.price, promotion);
+                    return (
+                      <div>
+                        <span style={{ fontSize: '1.1rem', color: 'var(--text-muted)', textDecoration: 'line-through', marginRight: '0.5rem' }}>
+                          {formatCurrency(product.price)}
+                        </span>
+                        <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--success)', textShadow: '0 0 15px var(--success-glow)', display: 'inline' }}>
+                          {formatCurrency(discountedPrice)}
+                        </h2>
+                      </div>
+                    );
+                  }
+                  return (
+                    <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 15px var(--secondary-glow)' }}>
+                      {formatCurrency(product.price)}
+                    </h2>
+                  );
+                })()}
               </div>
 
               <div>

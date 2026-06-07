@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { eq, desc } from 'drizzle-orm';
 import { db } from '../db/index';
-import { orders, orderItems, products } from '../db/schema';
+import { orders, orderItems, products, promotions } from '../db/schema';
 import { AuthRequest } from '../middleware/auth';
 import {
   DELIVERY_STATUSES,
@@ -13,6 +13,57 @@ import {
   normalizePaymentStatus,
 } from '../utils/orderStatus';
 import { notifyNewOrderForAdmins, notifyOrderDeliveryUpdate } from '../services/notificationService';
+
+async function getApplicablePromotionForProduct(productId: number, categoryId: number) {
+  const now = new Date();
+
+  const activePromotions = await db.query.promotions.findMany({
+    where: eq(promotions.isActive, true),
+  });
+
+  for (const promo of activePromotions) {
+    // Check if promotion is within date range
+    const startDate = new Date(promo.startDate);
+    const endDate = new Date(promo.endDate);
+    if (now < startDate || now > endDate) continue;
+
+    // Check if product is in applicable categories
+    if (promo.applicableCategories) {
+      const categories = JSON.parse(promo.applicableCategories as string);
+      if (!categories.includes(categoryId)) continue;
+    }
+
+    // Check if product is in applicable products
+    if (promo.applicableProducts) {
+      const products = JSON.parse(promo.applicableProducts as string);
+      if (!products.includes(productId)) continue;
+    }
+
+    // If no restrictions or product matches, return this promotion
+    return promo;
+  }
+
+  return null;
+}
+
+function calculateDiscountedPrice(originalPrice: number, promotion: any): number {
+  if (promotion.type === 'percentage') {
+    const discount = originalPrice * (promotion.value / 100);
+    const discountedPrice = originalPrice - discount;
+    
+    // Apply max discount limit if exists
+    if (promotion.maxDiscountAmount && discount > promotion.maxDiscountAmount) {
+      return originalPrice - promotion.maxDiscountAmount;
+    }
+    
+    return discountedPrice;
+  } else if (promotion.type === 'fixed_amount') {
+    const discountedPrice = originalPrice - promotion.value;
+    return Math.max(0, discountedPrice);
+  }
+  
+  return originalPrice;
+}
 
 async function deductStockForOrder(orderId: number) {
   const items = await db.query.orderItems.findMany({
@@ -117,13 +168,22 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           throw new Error(`Estoque insuficiente para o produto "${product.name}". Estoque disponível: ${product.stock}`);
         }
 
-        const price = product.price;
-        totalAmount += price * item.quantity;
+        // Check for applicable promotion and calculate discounted price
+        const promotion = await getApplicablePromotionForProduct(product.id, product.categoryId);
+        console.log(`Produto #${product.id} (${product.name}): Categoria=${product.categoryId}, Promoção=${promotion ? promotion.name : 'Nenhuma'}`);
+        
+        const finalPrice = promotion ? calculateDiscountedPrice(product.price, promotion) : product.price;
+        
+        if (promotion) {
+          console.log(`  Preço original: ${product.price}, Desconto aplicado: ${promotion.type} - ${promotion.value}%, Preço final: ${finalPrice}`);
+        }
+
+        totalAmount += finalPrice * item.quantity;
 
         verifiedItems.push({
           productId: product.id,
           quantity: item.quantity,
-          priceAtPurchase: price,
+          priceAtPurchase: finalPrice,
         });
       }
 

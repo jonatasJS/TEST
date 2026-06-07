@@ -163,6 +163,13 @@ export const me = async (req: AuthRequest, res: Response) => {
         role: true,
         phone: true,
         address: true,
+        cep: true,
+        street: true,
+        number: true,
+        complement: true,
+        neighborhood: true,
+        city: true,
+        state: true,
         profileImage: true,
         createdAt: true,
       },
@@ -184,7 +191,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     return res.status(401).json({ message: 'Não autenticado.' });
   }
 
-  const { name, email, currentPassword, confirmNewPassword, newPassword, phone, address, profileImage } = req.body;
+  const { name, email, currentPassword, confirmNewPassword, newPassword, phone, address, cep, street, number, complement, neighborhood, city, state, profileImage } = req.body;
 
   try {
     // Buscar usuário atual
@@ -196,12 +203,24 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Usuário não encontrado.' });
     }
 
-    const result = await cloudinary.uploader.upload(profileImage || user.profileImage, {
-      folder: "avatars",
-      width: 500,
-      height: 500,
-      crop: "fill"
-    });
+    let imageUrl = user.profileImage;
+
+    // Fazer upload apenas se uma nova imagem foi fornecida
+    if (profileImage && profileImage !== user.profileImage) {
+      try {
+        const result = await cloudinary.uploader.upload(profileImage, {
+          folder: "avatars",
+          width: 500,
+          height: 500,
+          crop: "fill"
+        });
+        imageUrl = result.secure_url;
+      } catch (cloudinaryError: any) {
+        console.error('Cloudinary upload error:', cloudinaryError);
+        // Se o Cloudinary falhar, continuar com a imagem existente ou vazia
+        imageUrl = user.profileImage || '';
+      }
+    }
 
     let passwordHash = user.passwordHash;
 
@@ -261,7 +280,14 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         email: email ? email.toLowerCase().trim() : user.email,
         phone: phone || user.phone,
         address: address || user.address,
-        profileImage: result.secure_url || profileImage || user.profileImage,
+        cep: cep || user.cep,
+        street: street || user.street,
+        number: number || user.number,
+        complement: complement || user.complement,
+        neighborhood: neighborhood || user.neighborhood,
+        city: city || user.city,
+        state: state || user.state,
+        profileImage: imageUrl,
         passwordHash: passwordHash,
       })
       .where(eq(users.id, req.user.id))
@@ -272,6 +298,13 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         role: users.role,
         phone: users.phone,
         address: users.address,
+        cep: users.cep,
+        street: users.street,
+        number: users.number,
+        complement: users.complement,
+        neighborhood: users.neighborhood,
+        city: users.city,
+        state: users.state,
         profileImage: users.profileImage,
         // passwordHash: users.passwordHash,
         createdAt: users.createdAt,

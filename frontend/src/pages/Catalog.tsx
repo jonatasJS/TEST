@@ -4,16 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Search, SlidersHorizontal, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../config/api';
-import { Product } from '../hooks/useCart';
+import { Product, Category } from '../hooks/useCart';
 import { ClientLayout } from '../components/ClientLayout';
 import { formatCurrency } from '../utils/formatCurrency';
+import { getApplicablePromotion, calculateDiscountedPrice } from '../utils/calculateDiscount';
 
 export const Catalog: React.FC = () => {
   const searchParams = useSearch({ from: '/products' }) as any;
   const navigate = useNavigate();
 
   const [searchVal, setSearchVal] = useState(searchParams.search || '');
-  const [selectedCategory, setSelectedCategory] = useState(searchParams.category || 'all');
+  const [selectedCategory, setSelectedCategory] = useState<string>(searchParams.category || 'all');
   const [sortBy, setSortBy] = useState(searchParams.sort || 'newest');
 
   // Sincronizar estados com parâmetros da URL se mudarem externamente
@@ -53,17 +54,26 @@ export const Catalog: React.FC = () => {
 
   const productList = data?.products || [];
 
+  // Buscar categorias ativas para filtros
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => apiFetch<{ categories: Category[] }>('/categories'),
+  });
+
+  const categories = categoriesData?.categories || [];
+
+  // Buscar promoções ativas
+  const { data: promotionsData } = useQuery({
+    queryKey: ['active-promotions'],
+    queryFn: () => apiFetch<{ promotions: any[] }>('/promotions/active'),
+  });
+
+  const activePromotions = promotionsData?.promotions || [];
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateFilters({ search: searchVal });
   };
-
-  const categories = [
-    { id: 'all', name: 'Todos' },
-    { id: 'disposable', name: 'Descartáveis (Puffs)' },
-    { id: 'pod_system', name: 'Pod Systems' },
-    { id: 'juice', name: 'Juices Premium' }
-  ];
 
   return (
     <ClientLayout>
@@ -143,14 +153,48 @@ export const Catalog: React.FC = () => {
 
           {/* Categorias Tabs */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+            <button
+              key="all"
+              onClick={() => {
+                setSelectedCategory('all');
+                updateFilters({ category: 'all' });
+              }}
+              style={{
+                background: selectedCategory === 'all' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid',
+                borderColor: selectedCategory === 'all' ? 'var(--primary)' : 'var(--border)',
+                color: selectedCategory === 'all' ? '#fff' : 'var(--text-muted)',
+                padding: '0.4rem 1.2rem',
+                borderRadius: '20px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all var(--transition-fast)',
+                boxShadow: selectedCategory === 'all' ? '0 0 10px var(--primary-glow)' : 'none',
+              }}
+              onMouseEnter={(e) => {
+                if (selectedCategory !== 'all') {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (selectedCategory !== 'all') {
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                }
+              }}
+            >
+              Todos
+            </button>
             {categories.map((cat) => {
-              const active = selectedCategory === cat.id;
+              const active = selectedCategory === String(cat.id);
               return (
                 <button
                   key={cat.id}
                   onClick={() => {
-                    setSelectedCategory(cat.id);
-                    updateFilters({ category: cat.id });
+                    setSelectedCategory(String(cat.id));
+                    updateFilters({ category: String(cat.id) });
                   }}
                   style={{
                     background: active ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)',
@@ -249,7 +293,7 @@ export const Catalog: React.FC = () => {
                       border: '1px solid rgba(6, 182, 212, 0.3)',
                     }}
                   >
-                    {product.category === 'disposable' ? 'Descartável' : product.category === 'juice' ? 'Juice' : 'Pod System'}
+                    {product.category?.name || 'Sem categoria'}
                   </span>
 
                   {/* Stock Alert */}
@@ -303,9 +347,27 @@ export const Catalog: React.FC = () => {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem' }}>
                       <div>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Preço</span>
-                        <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 10px var(--secondary-glow)' }}>
-                          {formatCurrency(product.price)}
-                        </span>
+                        {(() => {
+                          const promotion = getApplicablePromotion(product, activePromotions);
+                          if (promotion) {
+                            const discountedPrice = calculateDiscountedPrice(product.price, promotion);
+                            return (
+                              <div>
+                                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', textDecoration: 'line-through', marginRight: '0.5rem' }}>
+                                  {formatCurrency(product.price)}
+                                </span>
+                                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)', textShadow: '0 0 10px var(--success-glow)' }}>
+                                  {formatCurrency(discountedPrice)}
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--secondary)', textShadow: '0 0 10px var(--secondary-glow)' }}>
+                              {formatCurrency(product.price)}
+                            </span>
+                          );
+                        })()}
                       </div>
                       
                       <Link

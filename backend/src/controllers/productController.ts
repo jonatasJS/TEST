@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { eq, and, like, or, asc, desc } from 'drizzle-orm';
+import { eq, and, like, or, asc, desc, sql } from 'drizzle-orm';
 import { db } from '../db/index';
-import { products } from '../db/schema';
+import { products, orderItems, orders } from '../db/schema';
 import cloudinary from '../utils/cloudinary';
 
 export const getAllProducts = async (req: Request, res: Response) => {
@@ -15,9 +15,9 @@ export const getAllProducts = async (req: Request, res: Response) => {
       conditions.push(eq(products.isActive, true));
     }
 
-    // Filtro por categoria
+    // Filtro por categoria (agora por categoryId)
     if (category && category !== 'all') {
-      conditions.push(eq(products.category, category as string));
+      conditions.push(eq(products.categoryId, parseInt(category as string)));
     }
 
     // Busca textual por nome, descrição ou sabor
@@ -45,6 +45,9 @@ export const getAllProducts = async (req: Request, res: Response) => {
     const allProducts = await db.query.products.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
       orderBy: [orderSpec],
+      with: {
+        category: true,
+      },
     });
 
     return res.status(200).json({ products: allProducts });
@@ -60,6 +63,9 @@ export const getProductById = async (req: Request, res: Response) => {
   try {
     const product = await db.query.products.findFirst({
       where: eq(products.id, parseInt(id)),
+      with: {
+        category: true,
+      },
     });
 
     if (!product) {
@@ -74,27 +80,23 @@ export const getProductById = async (req: Request, res: Response) => {
 };
 
 export const createProduct = async (req: Request, res: Response) => {
-  const { name, description, price, stock, imageUrl, category, puffs, nicotine, flavor } = req.body;
+  const { name, description, price, stock, imageUrl, categoryId, puffs, nicotine, flavor } = req.body;
 
-  if (!name || !description || price === undefined || stock === undefined || !imageUrl || !category) {
+  if (!name || !description || price === undefined || stock === undefined || !imageUrl || !categoryId) {
     return res.status(400).json({ message: 'Campos obrigatórios ausentes: nome, descrição, preço, estoque, imagem e categoria.' });
   }
 
   try {
-    const result = await cloudinary.uploader.upload(imageUrl, {
-      folder: "products",
-      width: 1000,
-      height: 1000,
-      crop: "fill"
-    });
+    // Skip Cloudinary upload for now - use provided image URL directly
+    const finalImageUrl = imageUrl;
 
     const [newProduct] = await db.insert(products).values({
       name,
       description,
       price: parseFloat(price),
       stock: parseInt(stock),
-      imageUrl: result.secure_url || imageUrl,
-      category,
+      imageUrl: finalImageUrl,
+      categoryId: parseInt(categoryId),
       puffs: puffs ? parseInt(puffs) : null,
       nicotine: nicotine || null,
       flavor: flavor || null,
@@ -112,7 +114,7 @@ export const createProduct = async (req: Request, res: Response) => {
 
 export const updateProduct = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, description, price, stock, imageUrl, category, puffs, nicotine, flavor, isActive } = req.body;
+  const { name, description, price, stock, imageUrl, categoryId, puffs, nicotine, flavor, isActive } = req.body;
 
   try {
     const existing = await db.query.products.findFirst({
@@ -123,20 +125,16 @@ export const updateProduct = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Produto não encontrado.' });
     }
 
-    const result = await cloudinary.uploader.upload(imageUrl, {
-      folder: "products",
-      width: 1000,
-      height: 1000,
-      crop: "fill"
-    });
+    // Skip Cloudinary upload for now - use provided image URL directly
+    const finalImageUrl = imageUrl || existing.imageUrl;
 
     const updatedValues: any = {};
     if (name !== undefined) updatedValues.name = name;
     if (description !== undefined) updatedValues.description = description;
     if (price !== undefined) updatedValues.price = parseFloat(price);
     if (stock !== undefined) updatedValues.stock = parseInt(stock);
-    if (imageUrl !== undefined) updatedValues.imageUrl = result.secure_url || imageUrl;
-    if (category !== undefined) updatedValues.category = category;
+    if (imageUrl !== undefined) updatedValues.imageUrl = finalImageUrl;
+    if (categoryId !== undefined) updatedValues.categoryId = parseInt(categoryId);
     if (puffs !== undefined) updatedValues.puffs = puffs ? parseInt(puffs) : null;
     if (nicotine !== undefined) updatedValues.nicotine = nicotine || null;
     if (flavor !== undefined) updatedValues.flavor = flavor || null;
@@ -184,5 +182,51 @@ export const deleteProduct = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Erro ao excluir/desativar produto:', error);
     return res.status(500).json({ message: 'Erro ao remover produto.', error: error.message });
+  }
+};
+
+export const getHeroProduct = async (req: Request, res: Response) => {
+  try {
+    // Query to get products with total sold
+    const productsWithSales = await db
+      .select({
+        id: products.id,
+        name: products.name,
+        description: products.description,
+        price: products.price,
+        stock: products.stock,
+        imageUrl: products.imageUrl,
+        categoryId: products.categoryId,
+        puffs: products.puffs,
+        nicotine: products.nicotine,
+        flavor: products.flavor,
+        isActive: products.isActive,
+        createdAt: products.createdAt,
+        totalSold: sql<number>`COALESCE(SUM(CASE WHEN ${orders.paymentStatus} = 'paid' THEN ${orderItems.quantity} ELSE 0 END), 0)`.as('totalSold'),
+      })
+      .from(products)
+      .leftJoin(orderItems, eq(products.id, orderItems.productId))
+      .leftJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(eq(products.isActive, true))
+      .groupBy(products.id)
+      .orderBy(desc(sql`COALESCE(SUM(CASE WHEN ${orders.paymentStatus} = 'paid' THEN ${orderItems.quantity} ELSE 0 END), 0)`));
+
+    // Fetch category details for all products
+    const productsWithCategories = await Promise.all(
+      productsWithSales.map(async (p) => {
+        const productWithCategory = await db.query.products.findFirst({
+          where: eq(products.id, p.id),
+          with: {
+            category: true,
+          },
+        });
+        return productWithCategory;
+      })
+    );
+
+    return res.status(200).json({ products: productsWithCategories });
+  } catch (error: any) {
+    console.error('Erro ao buscar produtos hero:', error);
+    return res.status(500).json({ message: 'Erro ao buscar produtos hero.', error: error.message });
   }
 };

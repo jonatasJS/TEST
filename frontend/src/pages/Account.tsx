@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useSearch, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -14,6 +14,9 @@ import {
   Edit2,
   Save,
   X,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
 } from 'lucide-react';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
@@ -27,6 +30,7 @@ import {
   paymentStatusLabel,
 } from '../utils/orderLabels';
 import { formatCurrency } from '../utils/formatCurrency';
+import { fetchAddressByCep, formatCep } from '../services/viaCep';
 
 interface OrderItem {
   id: number;
@@ -60,11 +64,20 @@ export const Account: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState<string | null>(null);
+  const [cepSuccess, setCepSuccess] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
     email: '',
     phone: '',
-    address: '',
+    cep: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
     profileImage: '',
     currentPassword: '',
     newPassword: '',
@@ -75,6 +88,73 @@ export const Account: React.FC = () => {
     !editForm.newPassword ||
     editForm.newPassword === editForm.confirmNewPassword;
 
+  // Debounce hook para CEP
+  const useDebounce = (value: string, delay: number) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+      const handler = setTimeout(() => {
+        setDebouncedValue(value);
+      }, delay);
+
+      return () => {
+        clearTimeout(handler);
+      };
+    }, [value, delay]);
+
+    return debouncedValue;
+  };
+
+  const debouncedCep = useDebounce(editForm.cep, 500);
+
+  // Buscar endereço pelo CEP
+  useEffect(() => {
+    const fetchAddress = async () => {
+      const cleanCep = debouncedCep.replace(/\D/g, '');
+
+      if (cleanCep.length === 8) {
+        setCepLoading(true);
+        setCepError(null);
+        setCepSuccess(false);
+
+        try {
+          const address = await fetchAddressByCep(cleanCep);
+
+          if (address) {
+            setEditForm(prev => ({
+              ...prev,
+              street: address.street,
+              neighborhood: address.neighborhood,
+              city: address.city,
+              state: address.state,
+            }));
+            setCepSuccess(true);
+            setCepError(null);
+          } else {
+            setCepError('CEP não encontrado');
+            setCepSuccess(false);
+          }
+        } catch (error) {
+          setCepError('Erro ao buscar CEP. Tente novamente.');
+          setCepSuccess(false);
+        } finally {
+          setCepLoading(false);
+        }
+      } else if (cleanCep.length > 0 && cleanCep.length < 8) {
+        // CEP incompleto, limpar erro e sucesso
+        setCepError(null);
+        setCepSuccess(false);
+      }
+    };
+
+    fetchAddress();
+  }, [debouncedCep]);
+
+  // Formatar CEP enquanto digita
+  const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '');
+    setEditForm(prev => ({ ...prev, cep: formatCep(value) }));
+  };
 
   // Buscar pedidos do usuário logado via TanStack Query
   const { data, isLoading } = useQuery({
@@ -103,7 +183,13 @@ export const Account: React.FC = () => {
         name: '',
         email: '',
         phone: '',
-        address: '',
+        cep: '',
+        street: '',
+        number: '',
+        complement: '',
+        neighborhood: '',
+        city: '',
+        state: '',
         profileImage: '',
         currentPassword: '',
         newPassword: '',
@@ -125,7 +211,13 @@ export const Account: React.FC = () => {
       name: user?.name || '',
       email: user?.email || '',
       phone: user?.phone || '',
-      address: user?.address || '',
+      cep: user?.cep || '',
+      street: user?.street || '',
+      number: user?.number || '',
+      complement: user?.complement || '',
+      neighborhood: user?.neighborhood || '',
+      city: user?.city || '',
+      state: user?.state || '',
       profileImage: user?.profileImage || '',
       currentPassword: '',
       newPassword: '',
@@ -146,14 +238,20 @@ export const Account: React.FC = () => {
       editForm.newPassword &&
       editForm.newPassword !== editForm.confirmNewPassword
     ) {
-      alert('As senhas não coincidem.');
+      toast.error('As senhas não coincidem.');
       return;
     }
 
     const profileData: any = {
       name: editForm.name,
       phone: editForm.phone,
-      address: editForm.address,
+      cep: editForm.cep,
+      street: editForm.street,
+      number: editForm.number,
+      complement: editForm.complement,
+      neighborhood: editForm.neighborhood,
+      city: editForm.city,
+      state: editForm.state,
       profileImage: editForm.profileImage,
     };
 
@@ -186,7 +284,13 @@ export const Account: React.FC = () => {
           name: '',
           email: '',
           phone: '',
-          address: '',
+          cep: '',
+          street: '',
+          number: '',
+          complement: '',
+          neighborhood: '',
+          city: '',
+          state: '',
           profileImage: '',
           currentPassword: '',
           newPassword: '',
@@ -547,16 +651,138 @@ export const Account: React.FC = () => {
                     />
                   </div>
 
-                  <div>
-                    <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
-                      Endereço
-                    </label>
-                    <textarea
-                      value={editForm.address}
-                      onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                      className="input-field"
-                      style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff', minHeight: '80px', resize: 'vertical' }}
-                    />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        CEP
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          value={editForm.cep}
+                          onChange={handleCepChange}
+                          className="input-field"
+                          style={{
+                            width: '100%',
+                            padding: '0.6rem',
+                            borderRadius: '6px',
+                            border: cepError ? '1px solid var(--error)' : cepSuccess ? '1px solid var(--success)' : '1px solid var(--border)',
+                            background: 'rgba(255,255,255,0.05)',
+                            color: '#fff',
+                            paddingRight: cepLoading || cepError || cepSuccess ? '2.5rem' : '0.6rem',
+                          }}
+                          placeholder="00000-000"
+                        />
+                        {cepLoading && (
+                          <div style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)' }}>
+                            <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                          </div>
+                        )}
+                        {cepError && !cepLoading && (
+                          <div style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--error)' }}>
+                            <AlertCircle size={14} />
+                          </div>
+                        )}
+                        {cepSuccess && !cepLoading && (
+                          <div style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--success)' }}>
+                            <CheckCircle size={14} />
+                          </div>
+                        )}
+                      </div>
+                      {cepError && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--error)', marginTop: '0.2rem', display: 'block' }}>
+                          {cepError}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div>
+                      <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        Rua
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.street}
+                        onChange={(e) => setEditForm({ ...editForm, street: e.target.value })}
+                        className="input-field"
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                        placeholder="Nome da rua"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        Número
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.number}
+                        onChange={(e) => setEditForm({ ...editForm, number: e.target.value })}
+                        className="input-field"
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                        placeholder="123"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        Complemento
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.complement}
+                        onChange={(e) => setEditForm({ ...editForm, complement: e.target.value })}
+                        className="input-field"
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                        placeholder="Apto, Bloco, etc. (opcional)"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        Bairro
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.neighborhood}
+                        onChange={(e) => setEditForm({ ...editForm, neighborhood: e.target.value })}
+                        className="input-field"
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                        placeholder="Bairro"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        Cidade
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.city}
+                        onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                        className="input-field"
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                        placeholder="Cidade"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label style={{ color: 'var(--text-dark)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.3rem' }}>
+                        Estado
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.state}
+                        onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                        className="input-field"
+                        style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                        placeholder="SP"
+                      />
+                    </div>
                   </div>
 
                   <div>

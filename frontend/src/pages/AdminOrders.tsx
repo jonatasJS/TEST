@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Mail, Phone, MapPin, Calendar } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { apiFetch } from '../config/api';
 import { useAuth } from '../hooks/useAuth';
 import { AdminLayout } from '../components/AdminLayout';
@@ -83,7 +84,7 @@ export const AdminOrders: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['my-orders'] });
     },
     onError: (err: any) => {
-      alert(err.message || 'Falha ao atualizar status do pedido.');
+      toast.error(err.message || 'Falha ao atualizar status do pedido.');
     },
   });
 

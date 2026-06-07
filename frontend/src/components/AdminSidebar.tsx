@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
-import { LayoutDashboard, Package, ShoppingCart, Users, Percent, BarChart3, LogOut, X } from 'lucide-react';
+import { LayoutDashboard, Package, FolderTree, ShoppingCart, Users, Percent, BarChart3, LogOut, X } from 'lucide-react';
 
 interface AdminSidebarProps {
   isOpen: boolean;
@@ -12,6 +12,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isOpen, onClose }) =
 
   const menuItems = [
     { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/admin/categories', label: 'Categorias', icon: FolderTree },
     { path: '/admin/products', label: 'Produtos', icon: Package },
     { path: '/admin/orders', label: 'Pedidos', icon: ShoppingCart },
     { path: '/admin/clients', label: 'Clientes', icon: Users },

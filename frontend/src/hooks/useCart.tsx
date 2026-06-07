@@ -1,4 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+
+export interface Category {
+  id: number;
+  name: string;
+  description: string | null;
+  slug: string;
+  imageUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
 
 export interface Product {
   id: number;
@@ -7,11 +18,13 @@ export interface Product {
   price: number;
   stock: number;
   imageUrl: string;
-  category: string;
+  categoryId: number;
+  category?: Category;
   puffs?: number | null;
   nicotine?: string | null;
   flavor?: string | null;
   isActive: boolean;
+  createdAt: string;
 }
 
 export interface CartItem {
@@ -61,10 +74,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (existingIndex > -1) {
       const updatedCart = [...cart];
       const newQty = updatedCart[existingIndex].quantity + quantity;
-      
+
       // Validar limite de estoque
       if (newQty > product.stock) {
-        alert(`Desculpe! O estoque máximo deste produto é ${product.stock} unidades.`);
+        toast.error(`Desculpe! O estoque máximo deste produto é ${product.stock} unidades.`);
         updatedCart[existingIndex].quantity = product.stock;
       } else {
         updatedCart[existingIndex].quantity = newQty;
@@ -73,7 +86,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       // Novo item no carrinho
       if (quantity > product.stock) {
-        alert(`Desculpe! O estoque máximo deste produto é ${product.stock} unidades.`);
+        toast.error(`Desculpe! O estoque máximo deste produto é ${product.stock} unidades.`);
         saveCart([...cart, { product, quantity: product.stock }]);
       } else {
         saveCart([...cart, { product, quantity }]);
@@ -96,7 +109,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const item = cart.find((i) => i.product.id === productId);
     if (item && quantity > item.product.stock) {
-      alert(`Desculpe! O estoque máximo para este item é ${item.product.stock} unidades.`);
+      toast.error(`Desculpe! O estoque máximo para este item é ${item.product.stock} unidades.`);
       quantity = item.product.stock;
     }
 
