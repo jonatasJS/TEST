@@ -1,0 +1,50 @@
+{
+  "name": "loja-vapes-nextjs",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "start": "next start",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit push",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "drizzle-orm": "^0.30.10",
+    "pg": "^8.11.5",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "mercadopago": "^2.0.15",
+    "cloudinary": "^2.10.0",
+    "web-push": "^3.6.7",
+    "dotenv": "^16.4.5",
+    "cookie": "^0.6.0",
+    "framer-motion": "^11.2.6",
+    "lucide-react": "^0.379.0",
+    "@tanstack/react-query": "^5.37.1",
+    "browser-image-compression": "^2.0.2",
+    "react-easy-crop": "^5.5.7",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/pg": "^8.11.6",
+    "@types/cookie": "^0.6.0",
+    "@types/web-push": "^3.6.4",
+    "babel-plugin-react-compiler": "1.0.0",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "drizzle-kit": "^0.21.4"
+  }
+}
